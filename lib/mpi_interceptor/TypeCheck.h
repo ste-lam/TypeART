@@ -13,6 +13,7 @@
 #ifndef TYPEART_MPI_INTERCEPTOR_TYPE_CHECK_H
 #define TYPEART_MPI_INTERCEPTOR_TYPE_CHECK_H
 
+#include "Error.h"
 #include "Util.h"
 #include "runtime/RuntimeInterface.h"
 #include "support/System.h"
@@ -53,7 +54,7 @@ struct Type {
   size_t size;
 
  public:
-  static std::optional<Type> create(const MPICall& call, int type_id);
+  static CreateResult<Type> create(const MPICall& call, int type_id);
 };
 
 struct Buffer {
@@ -64,8 +65,8 @@ struct Buffer {
   std::optional<std::vector<Buffer>> type_layout;
 
  public:
-  static std::optional<Buffer> create(const MPICall& call, const void* buffer);
-  static std::optional<Buffer> create(const MPICall& call, ptrdiff_t offset, const void* ptr, size_t count,
+  static CreateResult<Buffer> create(const MPICall& call, const void* buffer);
+  static CreateResult<Buffer> create(const MPICall& call, ptrdiff_t offset, const void* ptr, size_t count,
                                       int type_id);
 
   [[nodiscard]] bool hasStructType() const;
@@ -78,7 +79,7 @@ struct MPICombiner {
   std::vector<MPIType> type_args;
 
  public:
-  static std::optional<MPICombiner> create(const MPICall& call, MPI_Datatype type);
+  static CreateResult<MPICombiner> create(const MPICall& call, MPI_Datatype type);
 };
 
 struct MPIType {
@@ -88,7 +89,7 @@ struct MPIType {
   MPICombiner combiner;
 
  public:
-  static std::optional<MPIType> create(const MPICall& call, MPI_Datatype type);
+  static CreateResult<MPIType> create(const MPICall& call, MPI_Datatype type);
 };
 
 struct Caller {
@@ -96,7 +97,7 @@ struct Caller {
   SourceLocation location;
 
  public:
-  static std::optional<Caller> create(const void* caller_addr);
+  static CreateResult<Caller> create(const void* caller_addr);
 };
 
 struct MPICallArguments {
@@ -114,31 +115,25 @@ struct MPICall {
   MPICallArguments args;
 
  public:
-  static std::optional<MPICall> create(const char* function_name, const void* called_from, const void* buffer,
-                                       int is_const, int count, MPI_Datatype type);
+  static CreateResult<MPICall> create(const char* function_name, const void* called_from, const void* buffer,
+                                      int is_const, int count, MPI_Datatype type);
 
-  [[nodiscard]] int check_type_and_count() const;
+  TypeCheckResult<void> check_buffer() const;
 
  private:
-  struct [[nodiscard]] CheckResult {
-    int result;
-    int type_count_multiplier;
-    int buffer_count_multiplier;
-
-    static CheckResult error();
-    static CheckResult with_multipliers(int type, int buffer);
-
-    CheckResult& multiply_type_count_by(int rhs);
+  struct Multipliers {
+    size_t type;
+    size_t buffer;
   };
 
-  [[nodiscard]] int check_type_and_count_against(const Buffer& buffer) const;
-  CheckResult check_type(const Buffer& buffer, const MPIType& type) const;
-  CheckResult check_combiner_named(const Buffer& buffer, const MPIType& type) const;
-  CheckResult check_combiner_contiguous(const Buffer& buffer, const MPIType& type) const;
-  CheckResult check_combiner_vector(const Buffer& buffer, const MPIType& type) const;
-  CheckResult check_combiner_indexed_block(const Buffer& buffer, const MPIType& type) const;
-  CheckResult check_combiner_struct(const Buffer& buffer, const MPIType& type) const;
-  CheckResult check_combiner_subarray(const Buffer& buffer, const MPIType& type) const;
+  TypeCheckResult<void> check_type_and_count_against(const Buffer& buffer) const;
+  TypeCheckResult<Multipliers> check_type(const Buffer& buffer, const MPIType& type) const;
+  TypeCheckResult<Multipliers> check_combiner_named(const Buffer& buffer, const MPIType& type) const;
+  TypeCheckResult<Multipliers> check_combiner_contiguous(const Buffer& buffer, const MPIType& type) const;
+  TypeCheckResult<Multipliers> check_combiner_vector(const Buffer& buffer, const MPIType& type) const;
+  TypeCheckResult<Multipliers> check_combiner_indexed_block(const Buffer& buffer, const MPIType& type) const;
+  TypeCheckResult<Multipliers> check_combiner_struct(const Buffer& buffer, const MPIType& type) const;
+  TypeCheckResult<Multipliers> check_combiner_subarray(const Buffer& buffer, const MPIType& type) const;
 
   static std::atomic_size_t next_trace_id;
 };

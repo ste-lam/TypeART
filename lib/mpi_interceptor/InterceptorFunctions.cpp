@@ -10,14 +10,16 @@
 // SPDX-License-Identifier: BSD-3-Clause
 //
 
+#include "Logger.h"
 #include "TypeCheck.h"
 #include "runtime/RuntimeInterface.h"
 
 #include <atomic>
+#include <fmt/printf.h>
 #include <mpi.h>
 #include <sys/resource.h>
 
-int typeart_check_buffer(const typeart::MPICall& call);
+void typeart_check_buffer(const typeart::MPICall& call);
 
 struct CallCounter {
   std::atomic_size_t send        = {0};
@@ -36,6 +38,8 @@ struct MPICounter {
 };
 
 static MPICounter mcounter;
+
+static typeart::StderrLogger logger;
 
 extern "C" {
 
@@ -68,8 +72,7 @@ void typeart_check_send_and_recv(const char* name, const void* called_from, cons
 
 void typeart_unsupported_mpi_call(const char* name, const void* called_from) {
   ++counter.unsupported;
-  fprintf(stderr, "[Error] The MPI function %s is currently not checked by TypeArt", name);
-  // exit(0);
+  fmt::print(stderr, "[Error] The MPI function {} is currently not checked by TypeArt\n", name);
 }
 
 void typeart_exit() {
@@ -78,39 +81,26 @@ void typeart_exit() {
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   struct rusage end;
   getrusage(RUSAGE_SELF, &end);
-  fprintf(stderr, "R[%i][Info] CCounter { Send: %zu Recv: %zu Send_Recv: %zu Unsupported: %zu MAX RSS[KBytes]: %ld }\n",
-          rank, counter.send.load(), counter.recv.load(), counter.send_recv.load(), counter.unsupported.load(),
-          end.ru_maxrss);
-  fprintf(stderr, "R[%i][Info] MCounter { Error: %zu Null_Buf: %zu Null_Count: %zu Type_Error: %zu }\n", rank,
-          mcounter.error.load(), mcounter.null_buff.load(), mcounter.null_count.load(), mcounter.type_error.load());
+  fmt::print(stderr, "R[{}][Info] CCounter {{ Send: {} Recv: {} Send_Recv: {} Unsupported: {} MAX RSS[KBytes]: {} }}\n",
+             rank, counter.send.load(), counter.recv.load(), counter.send_recv.load(), counter.unsupported.load(),
+             end.ru_maxrss);
+  fmt::print(stderr, "R[{}][Info] MCounter {{ Error: {} Null_Buf: {} Null_Count: {} Type_Error: {} }}\n", rank,
+             mcounter.error.load(), mcounter.null_buff.load(), mcounter.null_count.load(), mcounter.type_error.load());
 }
 }
 
-int typeart_check_buffer(const typeart::MPICall& call) {
-  PRINT_INFOV(call, "%s[%p] at %s:%s: %s: checking %s-buffer %p of type \"%s\" against MPI type \"%s\"\n",
-              call.caller.location.function.c_str(), call.caller.addr, call.caller.location.file.c_str(),
-              call.caller.location.line.c_str(), call.function_name.c_str(), call.is_send ? "send" : "recv",
-              call.args.buffer.ptr, call.args.buffer.type.name.c_str(), call.args.type.name.c_str());
-
-  const bool count_is_zero     = call.args.count <= 0;
-  const bool buffer_is_nullptr = call.args.buffer.ptr == nullptr;
-
-  if (count_is_zero) {
-    ++mcounter.null_count;
+void typeart_check_buffer(const typeart::MPICall& call) {
+  auto check_result = call.check_buffer();
+  auto trace_id     = logger.logTypeCheckHeader(call);
+  if (check_result.has_error()) {
+    auto err = std::move(check_result).error();
+    if (err.is<typeart::NullCount>()) {
+      ++mcounter.null_count;
+    } else if (err.is<typeart::NullBuffer>()) {
+      ++mcounter.null_buff;
+    } else {
+      ++mcounter.type_error;
+    }
+    logger.log(trace_id, call, err);
   }
-
-  if (buffer_is_nullptr) {
-    ++mcounter.null_buff;
-    PRINT_WARNING(call, "buffer is NULL\n");
-  }
-
-  if (count_is_zero || buffer_is_nullptr) {
-    return -1;
-  }
-
-  if (call.check_type_and_count() != 0) {
-    ++mcounter.type_error;
-    return -1;
-  }
-  return 0;
 }

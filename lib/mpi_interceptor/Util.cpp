@@ -33,6 +33,15 @@ const char* error_message_for(typeart_status status) {
   }
 }
 
+std::string error_message_for(int mpierr) {
+  int len;
+  auto mpierrstr = std::string{};
+  mpierrstr.resize(MPI_MAX_ERROR_STRING);
+  MPI_Error_string(mpierr, &mpierrstr[0], &len);
+  mpierrstr.resize(strlen(mpierrstr.c_str()));
+  return mpierrstr;
+}
+
 template <class T>
 int type_of() {
   static_assert(std::is_integral_v<T>);

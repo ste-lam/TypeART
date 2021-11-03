@@ -12,6 +12,7 @@ add_custom_command(
 add_library(MPITool SHARED
   ${LIB_SOURCE}
   InterceptorFunctions.cpp
+  Logger.cpp
   TypeCheck.cpp
   Util.cpp
 )
@@ -45,6 +46,8 @@ endif()
 target_link_libraries(MPITool
   PRIVATE typeart::Runtime
           MPI::MPI_C
+          result
+          fmt
 )
 
 set(CONFIG_NAME ${PROJECT_NAME}MPITool)
