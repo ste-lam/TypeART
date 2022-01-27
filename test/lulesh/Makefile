@@ -9,8 +9,7 @@ SERCXX = clang++ -DUSE_MPI=0
 MPICXX = OMPI_CXX=clang++ mpic++ -DUSE_MPI=1
 CXX = $(MPICXX)
 
-TYPEART_LIBPATH = ${TYPEART_PATH}/lib
-LTYPEART_RT= -L$(TYPEART_LIBPATH)/runtime -ltypeart-rt
+LTYPEART_RT= -L$(TYPEART_RUNTIME_LIBPATH) -l$(TYPEART_RUNTIME_LIB)
 
 SOURCES2.0 = \
 	lulesh.cc \
@@ -24,8 +23,8 @@ OBJECTS2.0 = $(SOURCES2.0:.cc=.o)
 CXXFLAGS = -g -I. -Wall
 LDFLAGS = -g -O3
 
-PASSES=-load ${TYPEART_LIBPATH}/passes/analysis/meminstfinderpass.so -load ${TYPEART_LIBPATH}/passes/typeartpass.so -typeart-stats
-CALL_FILTER=-typeart-call-filter -typeart-call-filter-impl=default
+PASSES=-load $(TYPEART_PLUGIN) -typeart -typeart-stats
+OPT_FLAGS=-typeart-stack=true -typeart-global=true -typeart-heap=false -typeart-call-filter -typeart-call-filter-impl=std
 
 ifeq ($(TSAN), yes)
 	CXXFLAGS += -fsanitize=thread
@@ -34,7 +33,7 @@ endif
 
 .cc.o: lulesh.h
 ifeq ($(TYPEART), yes)
-	$(CXX) ${CXXFLAGS} -O1 -Xclang -disable-llvm-passes -S -emit-llvm $< -o - | opt $(PASSES) -typeart -S | opt -O3 -S | opt $(PASSES) -typeart -typeart-stack $(CALL_FILTER) -typeart-heap=false | llc -x=ir -filetype=obj -o $@
+	$(CXX) ${CXXFLAGS} -O1 -Xclang -disable-llvm-passes -S -emit-llvm $< -o - | opt $(PASSES) -S | opt -O3 -S | opt $(PASSES) $(OPT_FLAGS) | llc -x=ir -filetype=obj -o $@
 else
 	$(CXX) $(CXXFLAGS) -O3 -c -o $@ $<
 endif
