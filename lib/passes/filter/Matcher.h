@@ -35,12 +35,16 @@ class Matcher {
   virtual ~Matcher() = default;
 };
 
-class NoMatcher final : public Matcher {
+template<Matcher::MatchResult Result>
+class StaticMatcher final : public Matcher {
  public:
-  MatchResult match(llvm::CallSite) const {
-    return MatchResult::NoMatch;
+  MatchResult match(llvm::CallSite) const override {
+    return Result;
   };
 };
+
+using NoMatcher = StaticMatcher<Matcher::MatchResult::NoMatch>;
+using AnyMatcher = StaticMatcher<Matcher::MatchResult::Match>;
 
 class DefaultStringMatcher final : public Matcher {
   Regex matcher;

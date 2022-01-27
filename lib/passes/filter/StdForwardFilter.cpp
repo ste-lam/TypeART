@@ -31,9 +31,6 @@ class Function;
 
 namespace typeart::filter {
 
-ForwardFilterImpl::ForwardFilterImpl(std::unique_ptr<Matcher>&& m) : ForwardFilterImpl(std::move(m), nullptr) {
-}
-
 ForwardFilterImpl::ForwardFilterImpl(std::unique_ptr<Matcher>&& m, std::unique_ptr<Matcher>&& deep)
     : matcher(std::move(m)), deep_matcher(std::move(deep)) {
 }
@@ -76,7 +73,7 @@ FilterAnalysis filter::ForwardFilterImpl::decl(CallSite current, const Path& p) 
   const bool match_sig = matcher->match(current) == Matcher::MatchResult::Match;
   if (match_sig) {
     // if we have a deep_matcher it needs to trigger, otherwise analyze
-    if (!deep_matcher || deep_matcher->match(current) == Matcher::MatchResult::Match) {
+    if (deep_matcher->match(current) == Matcher::MatchResult::Match) {
       auto result = correlate2void(current, p);
       switch (result) {
         case ArgCorrelation::GlobalMismatch:
@@ -109,7 +106,7 @@ FilterAnalysis filter::ForwardFilterImpl::decl(CallSite current, const Path& p) 
 FilterAnalysis filter::ForwardFilterImpl::def(CallSite current, const Path& p) const {
   const bool match_sig = matcher->match(current) == Matcher::MatchResult::Match;
   if (match_sig) {
-    if (!deep_matcher || deep_matcher->match(current) == Matcher::MatchResult::Match) {
+    if (deep_matcher->match(current) == Matcher::MatchResult::Match) {
       auto result = correlate2void(current, p);
       switch (result) {
         case ArgCorrelation::GlobalMismatch:

@@ -45,13 +45,12 @@ struct StdFilterTrait {
 
 struct ForwardFilterImpl {
   using Support = StdFilterTrait;
+
   std::unique_ptr<Matcher> matcher;
   std::unique_ptr<Matcher> deep_matcher;
   FunctionOracleMatcher oracle;  // TODO make set flexible
 
-  explicit ForwardFilterImpl(std::unique_ptr<Matcher>&& m);
-
-  ForwardFilterImpl(std::unique_ptr<Matcher>&& m, std::unique_ptr<Matcher>&& deep);
+  explicit ForwardFilterImpl(std::unique_ptr<Matcher>&& m, std::unique_ptr<Matcher>&& deep = std::make_unique<AnyMatcher>());
 
   FilterAnalysis precheck(Value* in, Function* start, const FPath&);
 

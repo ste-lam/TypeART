@@ -36,10 +36,6 @@ class Function;
 
 namespace typeart::filter {
 
-CGFilterImpl::CGFilterImpl(const std::string& filter_str, std::unique_ptr<CGInterface>&& cgraph)
-    : CGFilterImpl(filter_str, std::move(cgraph), nullptr) {
-}
-
 CGFilterImpl::CGFilterImpl(const std::string& filter_str, std::unique_ptr<CGInterface>&& cgraph,
                            std::unique_ptr<Matcher>&& matcher)
     : filter(util::glob2regex(filter_str)), call_graph(std::move(cgraph)), deep_matcher(std::move(matcher)) {
@@ -84,7 +80,7 @@ FilterAnalysis CGFilterImpl::precheck(Value* in, Function* start, const FPath& f
 }
 
 FilterAnalysis CGFilterImpl::decl(CallSite current, const Path& p) {
-  if (deep_matcher && deep_matcher->match(current) == Matcher::MatchResult::Match) {
+  if (deep_matcher->match(current) == Matcher::MatchResult::Match) {
     auto result = correlate2void(current, p);
     switch (result) {
       case ArgCorrelation::GlobalMismatch:

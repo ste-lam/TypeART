@@ -54,10 +54,8 @@ struct CGFilterImpl {
   std::unique_ptr<CGInterface> call_graph;
   std::unique_ptr<Matcher> deep_matcher;
 
-  CGFilterImpl(const std::string& filter_str, std::unique_ptr<CGInterface>&& cgraph);
-
   CGFilterImpl(const std::string& filter_str, std::unique_ptr<CGInterface>&& cgraph,
-               std::unique_ptr<Matcher>&& matcher);
+               std::unique_ptr<Matcher>&& matcher = std::make_unique<NoMatcher>());
 
   FilterAnalysis precheck(Value* in, Function* start, const FPath&);
 
