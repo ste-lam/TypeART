@@ -144,6 +144,12 @@ inline ArgCorrelation correlate2void(CallSite c, const Path& p) {
       c, p, [](llvm::Type* type) { return type->isPointerTy() && type->getPointerElementType()->isIntegerTy(8); });
 }
 
+inline ArgCorrelation correlate2void(const llvm::CallBase &c, const Path& p) {
+  //compat for old api
+  CallSite site((Instruction*) &c);
+  return correlate2void(site, p);
+}
+
 inline ArgCorrelation correlate2pointer(CallSite c, const Path& p) {
   // weaker predicate than void pointer, but more generally applicable
   return detail::correlate(c, p, [](llvm::Type* type) { return type->isPointerTy(); });

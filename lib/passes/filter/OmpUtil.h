@@ -31,50 +31,86 @@ struct EmptyContext {
 struct OmpContext {
   constexpr static bool WithOmp = true;
 
-  static bool isOmpExecutor(const llvm::CallSite& c) {
-    const auto called = c.getCalledFunction();
-    if (called != nullptr) {
-      // TODO probably not complete (openmp task?, see isOmpTask*())
-      return called->getName().startswith("__kmpc_fork_call");
+  static bool isOmpExecutor(const llvm::Function& called) {
+    // TODO probably not complete (openmp task?, see isOmpTask*())
+    return called.getName().startswith("__kmpc_fork_call");
+  }
+
+  static bool isOmpTaskAlloc(const llvm::Function& called) {
+    return called.getName().startswith("__kmpc_omp_task_alloc");
+  }
+
+  static bool isOmpTaskCall(const llvm::Function& called) {
+    return called.getName().endswith("__kmpc_omp_task");
+  }
+
+  static bool isOmpTaskRelated(const llvm::Function& called) {
+    return called.getName().startswith("__kmpc_omp_task");
+  }
+
+  static bool isOmpHelper(const llvm::Function& called) {
+    if (isOmpExecutor(called)) {
+      return false;
     }
-    return false;
+    const auto name = called.getName();
+    // TODO extend this if required
+    return name.startswith("__kmpc") || name.startswith("omp_");
+  }
+
+  static bool isOmpExecutor(const llvm::CallBase& c) {
+    if (c.isIndirectCall()) {
+      return false;
+    }
+    return isOmpExecutor(*c.getCalledFunction());
+  }
+
+  static bool isOmpExecutor(const llvm::CallSite& c) {
+    if (c.isIndirectCall()) {
+      return false;
+    }
+    return isOmpExecutor(*c.getCalledFunction());
+  }
+
+  static bool isOmpTaskAlloc(const llvm::CallBase& c) {
+    if (c.isIndirectCall()) {
+      return false;
+    }
+    return isOmpTaskAlloc(*c.getCalledFunction());
   }
 
   static bool isOmpTaskAlloc(const llvm::CallSite& c) {
-    const auto called = c.getCalledFunction();
-    if (called != nullptr) {
-      return called->getName().startswith("__kmpc_omp_task_alloc");
+    if (c.isIndirectCall()) {
+      return false;
     }
-    return false;
+    return isOmpTaskAlloc(*c.getCalledFunction());
   }
 
   static bool isOmpTaskCall(const llvm::CallSite& c) {
-    const auto called = c.getCalledFunction();
-    if (called != nullptr) {
-      return called->getName().endswith("__kmpc_omp_task");
+    if (c.isIndirectCall()) {
+      return false;
     }
-    return false;
+    return isOmpTaskCall(*c.getCalledFunction());
   }
 
   static bool isOmpTaskRelated(const llvm::CallSite& c) {
-    const auto called = c.getCalledFunction();
-    if (called != nullptr) {
-      return called->getName().startswith("__kmpc_omp_task");
+    if (c.isIndirectCall()) {
+      return false;
     }
-    return false;
+    return isOmpTaskRelated(*c.getCalledFunction());
+  }
+
+  static bool isOmpHelper(const llvm::CallBase& c) {
+    if (c.isIndirectCall()) {
+      return false;
+    }
+    return isOmpHelper(*c.getCalledFunction());
   }
 
   static bool isOmpHelper(const llvm::CallSite& c) {
-    const auto is_execute = isOmpExecutor(c);
-    if (!is_execute) {
-      const auto called = c.getCalledFunction();
-      if (called != nullptr) {
-        const auto name = called->getName();
-        // TODO extend this if required
-        return name.startswith("__kmpc") || name.startswith("omp_");
-      }
+    if (c.isIndirectCall()) {
+      return false;
     }
-    return false;
+    return isOmpHelper(*c.getCalledFunction());
   }
 
   static llvm::Optional<llvm::Function*> getMicrotask(const llvm::CallSite& c) {
@@ -165,12 +201,8 @@ struct OmpContext {
         }
         // else find task_alloc, and correlate with store (arg "v") to result of task_alloc
         auto calls = util::find_all(f, [&](auto& inst) {
-          llvm::CallSite s(&inst);
-          if (s.isCall() || s.isInvoke()) {
-            if (auto f = s.getCalledFunction()) {
-              // once true, the find_all should cancel
-              return f->getName().startswith("__kmpc_omp_task_alloc");
-            }
+          if (llvm::isa<llvm::CallInst>(inst) || llvm::isa<llvm::InvokeInst>(inst)) {
+            return isOmpTaskAlloc(llvm::cast<llvm::CallBase>(inst));
           }
           return false;
         });

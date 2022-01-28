@@ -69,7 +69,7 @@ FilterAnalysis filter::ForwardFilterImpl::precheck(Value* in, Function* start, c
   return FilterAnalysis::Continue;
 }
 
-FilterAnalysis filter::ForwardFilterImpl::decl(CallSite current, const Path& p) const {
+FilterAnalysis filter::ForwardFilterImpl::decl(const llvm::CallBase &current, const Path& p) const {
   const bool match_sig = matcher->match(current) == Matcher::MatchResult::Match;
   if (match_sig) {
     // if we have a deep_matcher it needs to trigger, otherwise analyze
@@ -103,7 +103,7 @@ FilterAnalysis filter::ForwardFilterImpl::decl(CallSite current, const Path& p) 
   return FilterAnalysis::Keep;
 }
 
-FilterAnalysis filter::ForwardFilterImpl::def(CallSite current, const Path& p) const {
+FilterAnalysis filter::ForwardFilterImpl::def(const llvm::CallBase &current, const Path& p) const {
   const bool match_sig = matcher->match(current) == Matcher::MatchResult::Match;
   if (match_sig) {
     if (deep_matcher->match(current) == Matcher::MatchResult::Match) {

@@ -15,9 +15,8 @@
 
 //#include "Logger.h"
 
-#include "compat/CallSite.h"
-
 #include "llvm/Demangle/Demangle.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/Support/Regex.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -82,30 +81,24 @@ inline std::string dump(const Val& s) {
   return dump(s, has_begin_end_t<Val>{});
 }
 
-template <typename String>
-inline std::string demangle(String&& s) {
-  std::string name = std::string{s};
-  auto demangle    = llvm::itaniumDemangle(name.data(), nullptr, nullptr, nullptr);
-  if (demangle && !std::string(demangle).empty()) {
+
+inline std::string demangle(const llvm::StringRef &s) {
+  auto demangle    = llvm::itaniumDemangle(s.data(), nullptr, nullptr, nullptr);
+  if ((demangle != nullptr) && !std::string(demangle).empty()) {
     return {demangle};
   }
-  return name;
+  return s.str();
 }
 
-template <typename T>
-inline std::string try_demangle(const T& site) {
-  if constexpr (std::is_same_v<T, llvm::CallSite>) {
-    if (site.isIndirectCall()) {
-      return "";
-    }
-    return demangle(site.getCalledFunction()->getName());
-  } else {
-    if constexpr (std::is_same_v<T, llvm::Function>) {
-      return demangle(site.getName());
-    } else {
-      return demangle(site);
-    }
+inline std::string try_demangle(const llvm::Function & Func) {
+  return demangle(Func.getName());
+}
+
+inline std::string try_demangle(const llvm::CallBase &site) {
+  if (site.isIndirectCall()) {
+    return "";
   }
+  return try_demangle(*site.getCalledFunction());
 }
 
 template <typename Predicate>

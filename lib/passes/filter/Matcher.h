@@ -15,7 +15,6 @@
 
 #include "../analysis/MemOpData.h"
 #include "../support/Util.h"
-#include "compat/CallSite.h"
 
 #include "llvm/ADT/StringSet.h"
 
@@ -30,7 +29,7 @@ class Matcher {
   Matcher& operator=(const Matcher&) = default;
   Matcher& operator=(Matcher&&) = default;
 
-  virtual MatchResult match(llvm::CallSite) const = 0;
+  virtual MatchResult match(const llvm::CallBase &) const = 0;
 
   virtual ~Matcher() = default;
 };
@@ -38,7 +37,7 @@ class Matcher {
 template<Matcher::MatchResult Result>
 class StaticMatcher final : public Matcher {
  public:
-  MatchResult match(llvm::CallSite) const override {
+  MatchResult match(const llvm::CallBase &) const override {
     return Result;
   };
 };
@@ -53,8 +52,8 @@ class DefaultStringMatcher final : public Matcher {
   explicit DefaultStringMatcher(const std::string& regex) : matcher(regex, Regex::NoFlags) {
   }
 
-  MatchResult match(llvm::CallSite c) const override {
-    const auto f = c.getCalledFunction();
+  MatchResult match(const llvm::CallBase &c) const override {
+    auto *const f = c.getCalledFunction();
     if (f != nullptr) {
       const auto f_name  = util::demangle(f->getName());
       const bool matched = matcher.match(f_name);
@@ -75,8 +74,8 @@ class FunctionOracleMatcher final : public Matcher {
                                                 {"scanf"},  {"strtol"},       {"srand"}};
 
  public:
-  MatchResult match(llvm::CallSite c) const override {
-    const auto f = c.getCalledFunction();
+  MatchResult match(const llvm::CallBase &c) const override {
+    auto *const f = c.getCalledFunction();
     if (f != nullptr) {
       const auto f_name = util::demangle(f->getName());
       StringRef f_name_ref{f_name};

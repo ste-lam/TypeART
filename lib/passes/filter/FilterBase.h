@@ -113,7 +113,7 @@ class BaseFilter : public Filter {
       return false;
     }
 
-    for (auto& path2def : defPath) {
+    for (auto &path2def : defPath) {
       auto csite = path2def.getEnd();
       if (!csite) {
         continue;
@@ -178,44 +178,44 @@ class BaseFilter : public Filter {
 
     path.push(current);
 
-    bool skip{false};
     // In-order analysis
     const auto status = callsite(current, path);
     switch (status) {
+      case FilterAnalysis::Skip:
+        path.pop();
+        return true;
+
       case FilterAnalysis::Keep:
         LOG_DEBUG("Callsite check, keep")
         return false;
-      case FilterAnalysis::Skip:
-        skip = true;
-        break;
+
       case FilterAnalysis::FollowDef:
         LOG_DEBUG("Analyze definition in path");
         // store path (with the callsite) for a function recursive check later
         plist.emplace_back(path);
         break;
+
       default:
         break;
     }
 
-    if (!skip) {
-      const auto successors = search_dir.search(current, path);
-      for (auto* successor : successors) {
-        if constexpr (OmpHelper::WithOmp) {
-          if (OmpHelper::isTaskRelatedStore(successor)) {
-            LOG_DEBUG("Keep, passed to OMP task struct. Current: " << *current << " Succ: " << *successor)
-            path.push(successor);
-            return false;
-          }
-        }
-
-        if (path.contains(successor)) {
-          // Avoid recursion (e.g., with store inst pointer operands pointing to an allocation)
-          continue;
-        }
-        const auto filter = DFSfilter(successor, path, plist);
-        if (!filter) {
+    const auto successors = search_dir.search(current, path);
+    for (auto* successor : successors) {
+      if constexpr (OmpHelper::WithOmp) {
+        if (OmpHelper::isTaskRelatedStore(successor)) {
+          LOG_DEBUG("Keep, passed to OMP task struct. Current: " << *current << " Succ: " << *successor)
+          path.push(successor);
           return false;
         }
+      }
+
+      if (path.contains(successor)) {
+        // Avoid recursion (e.g., with store inst pointer operands pointing to an allocation)
+        continue;
+      }
+      const auto filter = DFSfilter(successor, path, plist);
+      if (!filter) {
+        return false;
       }
     }
 
@@ -224,74 +224,73 @@ class BaseFilter : public Filter {
   }
 
   FilterAnalysis callsite(llvm::Value* val, const Path& path) {
-    CallSite site(val);
-    if (site.isCall() || site.isInvoke()) {
-      const auto callee        = site.getCalledFunction();
-      const bool indirect_call = callee == nullptr;
+    if (!llvm::isa<llvm::CallInst>(val) && !llvm::isa<llvm::InvokeInst>(val)) {
+      return FilterAnalysis::Continue;
+    }
+    const auto &site = *llvm::cast<llvm::CallBase>(val);
 
-      // Indirect calls (sth. like function pointers)
-      if (indirect_call) {
-        if constexpr (CallSiteHandler::Support::Indirect) {
-          auto status = handler.indirect(site, path);
-          LOG_DEBUG("Indirect call: " << util::try_demangle(site))
-          return status;
-        } else {
-          LOG_DEBUG("Indirect call, keep: " << util::try_demangle(site))
-          return FilterAnalysis::Keep;
-        }
-      }
-
-      const bool is_decl      = callee->isDeclaration();
-      const bool is_intrinsic = site.getIntrinsicID() != Intrinsic::not_intrinsic;
-
-      // Handle decl
-      if (is_decl) {
-        if (is_intrinsic) {
-          if constexpr (CallSiteHandler::Support::Intrinsic) {
-            auto status = handler.intrinsic(site, path);
-            LOG_DEBUG("Intrinsic call: " << util::try_demangle(site))
-            return status;
-          } else {
-            LOG_DEBUG("Skip intrinsic: " << util::try_demangle(site))
-            return FilterAnalysis::Skip;
-          }
-        }
-
-        if constexpr (OmpHelper::WithOmp) {
-          // here we handle microtask executor functions:
-          if (OmpHelper::isOmpExecutor(site)) {
-            LOG_DEBUG("Omp executor, follow microtask: " << util::try_demangle(site))
-            return FilterAnalysis::FollowDef;
-          }
-
-          if (OmpHelper::isOmpHelper(site)) {
-            LOG_DEBUG("Omp helper, skip: " << util::try_demangle(site))
-            return FilterAnalysis::Skip;
-          }
-        }
-
-        // Handle decl (like MPI calls)
-        if constexpr (CallSiteHandler::Support::Declaration) {
-          auto status = handler.decl(site, path);
-          LOG_DEBUG("Decl call: " << util::try_demangle(site))
-          return status;
-        } else {
-          LOG_DEBUG("Declaration, keep: " << util::try_demangle(site))
-          return FilterAnalysis::Keep;
-        }
+    // Indirect calls (sth. like function pointers)
+    if (site.isIndirectCall()) {
+      if constexpr (CallSiteHandler::Support::Indirect) {
+        auto status = handler.indirect(site, path);
+        LOG_DEBUG("Indirect call: " << util::try_demangle(site))
+        return status;
       } else {
-        // Handle definitions
-        if constexpr (CallSiteHandler::Support::Definition) {
-          auto status = handler.def(site, path);
-          LOG_DEBUG("Defined call: " << util::try_demangle(site))
-          return status;
-        } else {
-          LOG_DEBUG("Definition, keep: " << util::try_demangle(site))
-          return FilterAnalysis::Keep;
-        }
+        LOG_DEBUG("Indirect call, keep: " << util::try_demangle(site))
+        return FilterAnalysis::Keep;
       }
     }
-    return FilterAnalysis::Continue;
+
+    const auto *callee      = site.getCalledFunction();
+    const bool is_decl      = callee->isDeclaration();
+    const bool is_intrinsic = callee->getIntrinsicID() != Intrinsic::not_intrinsic;
+
+    // Handle decl
+    if (is_decl) {
+      if (is_intrinsic) {
+        if constexpr (CallSiteHandler::Support::Intrinsic) {
+          auto status = handler.intrinsic(site, path);
+          LOG_DEBUG("Intrinsic call: " << util::try_demangle(site))
+          return status;
+        } else {
+          LOG_DEBUG("Skip intrinsic: " << util::try_demangle(site))
+          return FilterAnalysis::Skip;
+        }
+      }
+
+      if constexpr (OmpHelper::WithOmp) {
+        // here we handle microtask executor functions:
+        if (OmpHelper::isOmpExecutor(site)) {
+          LOG_DEBUG("Omp executor, follow microtask: " << util::try_demangle(site))
+          return FilterAnalysis::FollowDef;
+        }
+
+        if (OmpHelper::isOmpHelper(site)) {
+          LOG_DEBUG("Omp helper, skip: " << util::try_demangle(site))
+          return FilterAnalysis::Skip;
+        }
+      }
+
+      // Handle decl (like MPI calls)
+      if constexpr (CallSiteHandler::Support::Declaration) {
+        auto status = handler.decl(site, path);
+        LOG_DEBUG("Decl call: " << util::try_demangle(site))
+        return status;
+      } else {
+        LOG_DEBUG("Declaration, keep: " << util::try_demangle(site))
+        return FilterAnalysis::Keep;
+      }
+    } else {
+      // Handle definitions
+      if constexpr (CallSiteHandler::Support::Definition) {
+        auto status = handler.def(site, path);
+        LOG_DEBUG("Defined call: " << util::try_demangle(site))
+        return status;
+      } else {
+        LOG_DEBUG("Definition, keep: " << util::try_demangle(site))
+        return FilterAnalysis::Keep;
+      }
+    }
   }
 };
 

@@ -59,9 +59,9 @@ struct CGFilterImpl {
 
   FilterAnalysis precheck(Value* in, Function* start, const FPath&);
 
-  FilterAnalysis decl(CallSite current, const Path& p);
+  FilterAnalysis decl(const llvm::CallBase &, const Path &);
 
-  FilterAnalysis def(CallSite current, const Path& p);
+  FilterAnalysis def(const llvm::CallBase &, const Path &);
 };
 
 using CGForwardFilter = BaseFilter<CGFilterImpl, DefaultSearch, omp::OmpContext>;

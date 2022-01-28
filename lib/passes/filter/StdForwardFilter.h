@@ -54,9 +54,9 @@ struct ForwardFilterImpl {
 
   FilterAnalysis precheck(Value* in, Function* start, const FPath&);
 
-  FilterAnalysis decl(CallSite current, const Path& p) const;
+  FilterAnalysis decl(const llvm::CallBase &, const Path &) const;
 
-  FilterAnalysis def(CallSite current, const Path& p) const;
+  FilterAnalysis def(const llvm::CallBase &, const Path&) const;
 };
 
 using StandardForwardFilter = BaseFilter<ForwardFilterImpl, DefaultSearch, omp::OmpContext>;

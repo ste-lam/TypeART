@@ -79,7 +79,7 @@ FilterAnalysis CGFilterImpl::precheck(Value* in, Function* start, const FPath& f
   return FilterAnalysis::Continue;
 }
 
-FilterAnalysis CGFilterImpl::decl(CallSite current, const Path& p) {
+FilterAnalysis CGFilterImpl::decl(const llvm::CallBase &current, const Path& p) {
   if (deep_matcher->match(current) == Matcher::MatchResult::Match) {
     auto result = correlate2void(current, p);
     switch (result) {
@@ -114,7 +114,7 @@ FilterAnalysis CGFilterImpl::decl(CallSite current, const Path& p) {
   }
 }
 
-FilterAnalysis CGFilterImpl::def(CallSite current, const Path& p) {
+FilterAnalysis CGFilterImpl::def(const llvm::CallBase &current, const Path& p) {
   return decl(current, p);
 }
 
