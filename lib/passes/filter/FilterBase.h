@@ -77,6 +77,19 @@ class BaseFilter : public Filter {
   };
 
  private:
+
+  llvm::iterator_range<llvm::Function*> callees(const llvm::CallBase &Inst) {
+    if (Inst.isIndirectCall()) {
+      if constexpr (CallSiteHandler::Support::Callees) {
+        return handler.callees(Inst);
+      }
+
+      return std::initializer_list<llvm::Function*>{};
+    }
+
+    return {Inst.getCalledFunction()};
+  }
+
   bool DFSFuncFilter(llvm::Value* current, FPath& fpath) {
     /* do a pre-flow tracking check of value in  */
     if constexpr (CallSiteHandler::Support::PreCheck) {
@@ -178,12 +191,13 @@ class BaseFilter : public Filter {
 
     path.push(current);
 
-    // In-order analysis
-    const auto status = callsite(current, path);
-    switch (status) {
-      case FilterAnalysis::Skip:
-        path.pop();
-        return true;
+    if (const auto &CallBaseI = llvm::dyn_cast<llvm::CallBase>(current)) {
+      // In-order analysis
+      const auto status = callsite(*CallBaseI, path);
+      switch (status) {
+        case FilterAnalysis::Skip:
+          path.pop();
+          return true;
 
       case FilterAnalysis::Keep:
         LOG_DEBUG("Callsite check, keep")
@@ -195,8 +209,9 @@ class BaseFilter : public Filter {
         plist.emplace_back(path);
         break;
 
-      default:
-        break;
+        default:
+          break;
+      }
     }
 
     const auto successors = search_dir.search(current, path);
@@ -223,11 +238,10 @@ class BaseFilter : public Filter {
     return true;
   }
 
-  FilterAnalysis callsite(llvm::Value* val, const Path& path) {
-    if (!llvm::isa<llvm::CallInst>(val) && !llvm::isa<llvm::InvokeInst>(val)) {
+  FilterAnalysis callsite(const llvm::CallBase &site, const Path& path) {
+    if (llvm::isa<llvm::CallBrInst>(site)) {
       return FilterAnalysis::Continue;
     }
-    const auto &site = *llvm::cast<llvm::CallBase>(val);
 
     // Indirect calls (sth. like function pointers)
     if (site.isIndirectCall()) {

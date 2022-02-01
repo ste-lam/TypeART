@@ -38,6 +38,7 @@ struct DefaultSearch;
 namespace typeart::filter {
 
 struct CGFilterTrait {
+  constexpr static bool Callees     = false;
   constexpr static bool Indirect    = false;
   constexpr static bool Intrinsic   = false;
   constexpr static bool Declaration = true;
