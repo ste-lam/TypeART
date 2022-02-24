@@ -37,6 +37,7 @@
 #include <iterator>
 #include <utility>
 #include <vector>
+#include <iostream>
 
 namespace llvm {
 class Value;
@@ -95,7 +96,7 @@ inline std::pair<llvm::Argument*, int> findArg(CallSite c, const Path& p) {
     }
   }
 
-  Argument* argument = c.getCalledFunction()->arg_begin() + arg_num;
+  Argument* argument = c.getCalledFunction()->getArg(arg_num);
   return {argument, arg_num};
 }
 
@@ -109,9 +110,8 @@ inline std::vector<llvm::Argument*> args(CallSite c, const Path& p) {
     return {arg};
   }
 
-  std::vector<llvm::Argument*> args;
-  llvm::for_each(c.getCalledFunction()->args(), [&](llvm::Argument& a) { args.emplace_back(&a); });
-  return args;
+  auto *CalledFunction = c.getCalledFunction();
+  return {CalledFunction->arg_begin(), CalledFunction->arg_end()};
 }
 
 namespace detail {

@@ -102,85 +102,101 @@ class BaseFilter : public Filter {
             fpath.pop();
             LOG_DEBUG("Pre-check, filter")
             return true;
+
           case FilterAnalysis::Keep:
             LOG_DEBUG("Pre-check, keep")
             return false;
+
           case FilterAnalysis::Skip:
-            [[fallthrough]];
           case FilterAnalysis::Continue:
-            [[fallthrough]];
+          case FilterAnalysis::FollowDef:
+            break;
+
           default:
+            llvm_unreachable("unknown/undefined enum value");
             break;
         }
       }
-    } else {
     }
 
     PathList defPath;  // paths that reach a definition in currentF
     Path p;
-    const auto filter = DFSfilter(current, p, defPath);
 
-    if (!filter) {
+    if (const auto filter = DFSfilter(current, p, defPath); !filter) {
       // for diagnostic output, store the last path
       fpath.pushFinal(p);
       return false;
     }
 
     for (auto &path2def : defPath) {
-      auto csite = path2def.getEnd();
-      if (!csite) {
-        continue;
-      }
-
-      llvm::CallSite c(csite.getValue());
-      if (fpath.contains(c)) {
-        // Avoid recursion:
-        // TODO a continue may be wrong, if the function itself eventually calls "MPI"?
-        continue;
-      }
-
-      // TODO: here we have a definition OR a omp call, e.g., @__kmpc_fork_call
-      LOG_DEBUG("Looking at: " << c.getCalledFunction()->getName());
-
-      if constexpr (OmpHelper::WithOmp) {
-        if (OmpHelper::isOmpExecutor(c)) {
-          if (OmpHelper::canDiscardMicrotaskArg(c, path2def)) {
-            LOG_DEBUG("Passed as internal OMP API arg, skipping " << path2def)
-            continue;
-          }
-        }
-      }
-
-      auto argv = args(c, path2def);
-      if (argv.size() > 1) {
-        LOG_DEBUG("All args are looked at.")
-      } else if (argv.size() == 1) {
-        LOG_DEBUG("Following 1 arg.");
-      } else {
-        LOG_DEBUG("No argument correlation.")
-      }
-
-      if constexpr (OmpHelper::WithOmp) {
-        if (OmpHelper::isOmpExecutor(c)) {
-          auto outlined = OmpHelper::getMicrotask(c);
-          if (outlined) {
-            path2def.push(outlined.getValue());
-          }
-        }
-      }
-
-      fpath.push(path2def);
-
-      for (auto* arg : argv) {
-        const auto dfs_filter = DFSFuncFilter(arg, fpath);
-        if (!dfs_filter) {
-          return false;
-        }
+      if (followPath(fpath, path2def) == VR_Stop) {
+        return false;
       }
     }
 
     fpath.pop();
     return true;
+  }
+
+  enum VisitResult {
+    VR_Continue = 0,
+    VR_Stop,
+  };
+
+  VisitResult followPath(FPath& fpath, IRPath &path2def) {
+    auto csite = path2def.getEnd();
+    if (!csite) {
+      return VR_Continue;
+    }
+
+    llvm::CallSite c(csite.getValue());
+    if (fpath.contains(c)) {
+      // Avoid recursion:
+      // TODO a continue may be wrong, if the function itself eventually calls "MPI"?
+      return VR_Continue;
+    }
+
+    // TODO: here we have a definition OR a omp call, e.g., @__kmpc_fork_call
+    LOG_DEBUG("Looking at: " << c.getCalledFunction()->getName());
+
+    if constexpr (OmpHelper::WithOmp) {
+      if (OmpHelper::isOmpExecutor(c)) {
+        if (OmpHelper::canDiscardMicrotaskArg(c, path2def)) {
+          LOG_DEBUG("Passed as internal OMP API arg, skipping " << path2def);
+          return VR_Continue;
+        }
+      }
+    }
+
+    auto argv = args(c, path2def);
+    if (argv.size() > 1) {
+      LOG_DEBUG("All args are looked at.")
+    } else if (argv.size() == 1) {
+      LOG_DEBUG("Following 1 arg.");
+    } else {
+      LOG_DEBUG("No argument correlation.")
+    }
+
+    // idea: add an arg expand!
+
+    if constexpr (OmpHelper::WithOmp) {
+      if (OmpHelper::isOmpExecutor(c)) {
+        auto outlined = OmpHelper::getMicrotask(c);
+        if (outlined) {
+          path2def.push(outlined.getValue());
+        }
+      }
+    }
+
+    fpath.push(path2def);
+
+    for (auto* arg : argv) {
+      if (const auto dfs_filter = DFSFuncFilter(arg, fpath); !dfs_filter) {
+        return VR_Stop;
+      }
+    }
+
+    return VR_Continue;
   }
 
   bool DFSfilter(llvm::Value* current, Path& path, PathList& plist) {
@@ -191,9 +207,9 @@ class BaseFilter : public Filter {
 
     path.push(current);
 
-    if (const auto &CallBaseI = llvm::dyn_cast<llvm::CallBase>(current)) {
+    if (const auto *CallBaseInst = llvm::dyn_cast<llvm::CallBase>(current)) {
       // In-order analysis
-      const auto status = callsite(*CallBaseI, path);
+      const auto status = callsite(*CallBaseInst, path);
       switch (status) {
         case FilterAnalysis::Skip:
           path.pop();
@@ -209,8 +225,13 @@ class BaseFilter : public Filter {
         plist.emplace_back(path);
         break;
 
-        default:
+      case FilterAnalysis::Continue:
+      case FilterAnalysis::Filter:
           break;
+
+      default:
+        llvm_unreachable("unknown/undefined enum value");
+        break;
       }
     }
 
@@ -228,8 +249,8 @@ class BaseFilter : public Filter {
         // Avoid recursion (e.g., with store inst pointer operands pointing to an allocation)
         continue;
       }
-      const auto filter = DFSfilter(successor, path, plist);
-      if (!filter) {
+
+      if (const auto filter = DFSfilter(successor, path, plist); !filter) {
         return false;
       }
     }
@@ -239,6 +260,7 @@ class BaseFilter : public Filter {
   }
 
   FilterAnalysis callsite(const llvm::CallBase &site, const Path& path) {
+    // needs to be either CallInst or InvokeInst
     if (llvm::isa<llvm::CallBrInst>(site)) {
       return FilterAnalysis::Continue;
     }
