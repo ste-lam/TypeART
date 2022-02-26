@@ -87,13 +87,13 @@ class BaseFilter : public Filter {
     VR_Stop,
   };
 
-  llvm::iterator_range<llvm::Function*> callees(const llvm::CallBase &Inst) {
+  std::vector<llvm::Function*> callees(const llvm::CallBase &Inst) {
     if (Inst.isIndirectCall()) {
       if constexpr (CallSiteHandler::Support::Callees) {
         return handler.callees(Inst);
       }
 
-      return std::initializer_list<llvm::Function*>{};
+      return {};
     }
 
     return {Inst.getCalledFunction()};
@@ -210,13 +210,13 @@ class BaseFilter : public Filter {
     }
     const auto &Site = *llvm::cast<llvm::CallBase>(*csite);
 
-    if (Site.isIndirectCall()) {
-      return VR_Continue;
+    for (const auto *Callee: callees(Site)) {
+      if (followCallee(Site, *Callee, fpath, path2def) == VR_Stop) {
+        return VR_Stop;
+      }
     }
 
-    const auto &Callee = *Site.getCalledFunction();
-
-    return followCallee(Site, Callee, fpath, path2def);
+    return VR_Continue;
   }
 
   /// visits all reachable nodes within a function
