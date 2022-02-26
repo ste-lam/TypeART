@@ -32,11 +32,16 @@
 namespace typeart::filter {
 
 enum class FilterAnalysis {
-  Skip = 0,   // Do not follow users of current decl/def etc.
-  Continue,   // Continue searching users of decl/def etc.
-  Keep,       // Keep the value (return false)
-  Filter,     // Filter the value (return true)
-  FollowDef,  // Want analysis of the called function def
+  /// Do not follow users of current decl/def etc.
+  Skip = 0,
+  /// Continue searching users of decl/def etc.
+  Continue,
+  /// Keep the value (return false)
+  Keep,
+  /// Filter the value (return true)
+  Filter,
+  /// Want analysis of the called function def
+  FollowDef,
 };
 
 template <typename CallSiteHandler, typename Search, typename OmpHelper = omp::EmptyContext>
@@ -68,12 +73,12 @@ class BaseFilter : public Filter {
     return filter;
   }
 
-  void setStartingFunction(llvm::Function* f) override {
-    start_f = f;
+  void setStartingFunction(llvm::Function* StartingFunction) override {
+    start_f = StartingFunction;
   };
 
-  void setMode(bool m) override {
-    malloc_mode = m;
+  void setMode(bool MallocMode) override {
+    malloc_mode = MallocMode;
   };
 
  private:
@@ -260,7 +265,7 @@ class BaseFilter : public Filter {
   }
 
   FilterAnalysis callsite(const llvm::CallBase &site, const Path& path) {
-    // needs to be either CallInst or InvokeInst
+    // needs to be either a CallInst or an InvokeInst
     if (llvm::isa<llvm::CallBrInst>(site)) {
       return FilterAnalysis::Continue;
     }

@@ -175,7 +175,7 @@ inline bool isTempAlloc(llvm::Value* in) {
 
     return match;
   };
-  if (llvm::AllocaInst* inst = llvm::dyn_cast<llvm::AllocaInst>(in)) {
+  if (auto *inst = llvm::dyn_cast<llvm::AllocaInst>(in)) {
     if (inst->getAllocatedType()->isPointerTy()) {
       return farg_stored_to(inst);
     }

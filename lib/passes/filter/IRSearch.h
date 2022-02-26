@@ -21,8 +21,7 @@
 namespace typeart::filter {
 
 struct DefaultSearch {
-  auto search(llvm::Value* val, const Path& p) -> std::vector<llvm::Value*> {
-    std::vector<llvm::Value*> out;
+  std::vector<llvm::Value*> search(llvm::Value* val, const Path& p) {
 
     if (isa<llvm::PHINode>(val)) {
       // FIXME
@@ -32,27 +31,27 @@ struct DefaultSearch {
       // see amg with openmp `amg2013/parcsr_ls/par_lr_interp.c`
       if (const auto node = p.phi_cache.find(val); node != std::end(p.phi_cache)) {
         if (node->second > 1) {
-          return out;
+          return {};
         }
       }
     }
 
-    if (auto store = llvm::dyn_cast<llvm::StoreInst>(val)) {
-      val = store->getPointerOperand();
-      if (llvm::isa<AllocaInst>(val) && !store->getValueOperand()->getType()->isPointerTy()) {
+    if (auto *store = llvm::dyn_cast<llvm::StoreInst>(val)) {
+      auto *PointerOperand = store->getPointerOperand();
+      if (llvm::isa<AllocaInst>(PointerOperand) && !store->getValueOperand()->getType()->isPointerTy()) {
         // 1. if we store to an alloca, and the value is not a pointer (i.e., a value) there is no connection to follow
         // w.r.t. dataflow. (TODO exceptions could be some pointer arithm.)
-        return out;
-      }
-      if (p.contains(val)) {
-        // If the pointer operand is already in the path, we do not want to continue.
-        // Encountered: amg: box_algebra.c: hypre_MinUnionBoxes endless recursion
-        return out;
+        return {};
       }
 
-      out.push_back(val);
+      if (p.contains(PointerOperand)) {
+        // If the pointer operand is already in the path, we do not want to continue.
+        // Encountered: amg: box_algebra.c: hypre_MinUnionBoxes endless recursion
+        return {};
+      }
+
       // The following return is needed to fix endless recursions (see test/pass/filter/ -> 08 and 09)
-      return out;  // this is what we need in case of following store target
+      return {PointerOperand};  // this is what we need in case of following store target
 
       // 2. TODO if we store to a pointer, analysis is required to filter simple aliasing pointer (filter opportunity,
       // see test 01_alloca.llin variable a and c -- c points to a, then c gets passed to MPI)
@@ -60,8 +59,7 @@ struct DefaultSearch {
       // passed to func foo_bar
     }
 
-    llvm::transform(val->users(), std::back_inserter(out), [](llvm::User* u) { return dyn_cast<llvm::Value>(u); });
-    return out;
+    return {val->user_begin(), val->user_end()};
   }
 };
 

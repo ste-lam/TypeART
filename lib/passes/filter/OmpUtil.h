@@ -175,7 +175,7 @@ struct OmpContext {
         [&found](auto value) {
           llvm::CallSite site(value);
           if (site.isCall() || site.isInvoke()) {
-            const auto called = site.getCalledFunction();
+            auto *const called = site.getCalledFunction();
             if (called != nullptr && called->getName().startswith("__kmpc_omp_task(")) {
               found = true;
               return util::DefUseChain::cancel;
@@ -187,12 +187,11 @@ struct OmpContext {
   }
 
   static bool isTaskRelatedStore(llvm::Value* v) {
-    if (llvm::StoreInst* store = llvm::dyn_cast<llvm::StoreInst>(v)) {
-      llvm::Function* f = store->getFunction();
-      if (util::omp::isOmpContext(f)) {
-        auto operand = store->getPointerOperand();
-        if (llvm::GEPOperator* gep = llvm::dyn_cast<llvm::GEPOperator>(operand)) {
-          auto type = gep->getSourceElementType();
+    if (auto* store = llvm::dyn_cast<llvm::StoreInst>(v)) {
+      if (util::omp::isOmpContext(store)) {
+        auto *operand = store->getPointerOperand();
+        if (auto* gep = llvm::dyn_cast<llvm::GEPOperator>(operand)) {
+          auto *type = gep->getSourceElementType();
           // Second condition filters out many struct.ident_t in lulesh omp:
           if (llvm::isa<llvm::StructType>(type) && !type->getStructName().contains("struct.ident_t")) {
             //            LOG_FATAL(*(gep->getSourceElementType()))
@@ -200,6 +199,7 @@ struct OmpContext {
           }
         }
         // else find task_alloc, and correlate with store (arg "v") to result of task_alloc
+        llvm::Function* f = store->getFunction();
         auto calls = util::find_all(f, [&](auto& inst) {
           if (llvm::isa<llvm::CallInst>(inst) || llvm::isa<llvm::InvokeInst>(inst)) {
             return isOmpTaskAlloc(llvm::cast<llvm::CallBase>(inst));
@@ -209,7 +209,7 @@ struct OmpContext {
 
         bool found{false};
         util::DefUseChain chain;
-        for (auto i : calls) {
+        for (auto *i : calls) {
           chain.traverse(i, [&v, &found](auto val) {
             if (v == val) {
               found = true;
