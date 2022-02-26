@@ -70,11 +70,14 @@ FilterAnalysis filter::ForwardFilterImpl::precheck(Value* in, Function* start, c
 }
 
 FilterAnalysis filter::ForwardFilterImpl::decl(const llvm::CallBase &current, const Path& p) const {
+  assert(!current.isIndirectCall());
+  const auto &Callee = *current.getCalledFunction();
+
   const bool match_sig = matcher->match(current) == Matcher::MatchResult::Match;
   if (match_sig) {
     // if we have a deep_matcher it needs to trigger, otherwise analyze
     if (deep_matcher->match(current) == Matcher::MatchResult::Match) {
-      auto result = correlate2void(current, p);
+      auto result = correlate2void(current, Callee, p);
       switch (result) {
         case ArgCorrelation::GlobalMismatch:
           [[fallthrough]];
@@ -104,10 +107,13 @@ FilterAnalysis filter::ForwardFilterImpl::decl(const llvm::CallBase &current, co
 }
 
 FilterAnalysis filter::ForwardFilterImpl::def(const llvm::CallBase &current, const Path& p) const {
+  assert(!current.isIndirectCall());
+  const auto &Callee = *current.getCalledFunction();
+
   const bool match_sig = matcher->match(current) == Matcher::MatchResult::Match;
   if (match_sig) {
     if (deep_matcher->match(current) == Matcher::MatchResult::Match) {
-      auto result = correlate2void(current, p);
+      auto result = correlate2void(current, Callee, p);
       switch (result) {
         case ArgCorrelation::GlobalMismatch:
           [[fallthrough]];

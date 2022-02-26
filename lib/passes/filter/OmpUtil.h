@@ -113,20 +113,21 @@ struct OmpContext {
     return isOmpHelper(*c.getCalledFunction());
   }
 
-  static llvm::Optional<llvm::Function*> getMicrotask(const llvm::CallSite& c) {
-    using namespace llvm;
-    if (isOmpExecutor(c)) {
-      auto f = llvm::dyn_cast<llvm::Function>(c.getArgOperand(2)->stripPointerCasts());
-      return {f};
+  static llvm::Optional<llvm::Function*> getMicrotask(const llvm::CallBase& Site, const llvm::Function &Callee) {
+    assert(Site.getCalledOperand() == &Callee || Site.isIndirectCall());
+
+    if (isOmpExecutor(Callee)) {
+      auto *Fun = llvm::dyn_cast<llvm::Function>(Site.getArgOperand(2)->stripPointerCasts());
+      return llvm::Optional<llvm::Function*>::create(&Fun);
     }
-    if (isOmpTaskAlloc(c)) {
-      auto f = llvm::dyn_cast<llvm::Function>(c.getArgOperand(5)->stripPointerCasts());
-      return {f};
+    if (isOmpTaskAlloc(Callee)) {
+      auto *Fun = llvm::dyn_cast<llvm::Function>(Site.getArgOperand(5)->stripPointerCasts());
+      return llvm::Optional<llvm::Function*>::create(&Fun);
     }
     return llvm::None;
   }
 
-  static bool canDiscardMicrotaskArg(llvm::CallSite c, const Path& path) {
+  static bool canDiscardMicrotaskArg(const llvm::CallBase &c, const llvm::Function &Callee, const Path& path) {
     using namespace llvm;
     auto arg = path.getEndPrev();
     if (!arg) {
@@ -134,23 +135,23 @@ struct OmpContext {
     }
 
     Value* in          = arg.getValue();
-    const auto arg_pos = llvm::find_if(c.args(), [&in](const Use& arg_use) -> bool { return arg_use.get() == in; });
+    auto *const arg_pos = llvm::find_if(c.args(), [&in](const Use& arg_use) -> bool { return arg_use.get() == in; });
 
     if (arg_pos == c.arg_end()) {
       return false;
     }
 
-    auto arg_num = std::distance(c.arg_begin(), arg_pos);
+    auto arg_num = c.getArgOperandNo(arg_pos);
 
-    if (isOmpExecutor(c)) {
+    if (isOmpExecutor(Callee)) {
       return arg_num <= 2;
     }
 
-    if (isOmpTaskAlloc(c)) {
+    if (isOmpTaskAlloc(Callee)) {
       return arg_num <= 5;  // task alloc inits the task, discard all 5
     }
 
-    if (isOmpTaskCall(c)) {
+    if (isOmpTaskCall(Callee)) {
       return arg_num <= 2;  // task call executes, in theory, discard only first 2
     }
 
@@ -198,6 +199,7 @@ struct OmpContext {
             return true;
           }
         }
+
         // else find task_alloc, and correlate with store (arg "v") to result of task_alloc
         llvm::Function* f = store->getFunction();
         auto calls = util::find_all(f, [&](auto& inst) {
@@ -228,12 +230,12 @@ struct OmpContext {
   }
 
   template <typename Distance>
-  static Distance getArgOffsetToMicrotask(const llvm::CallSite& c, Distance d) {
+  static Distance getArgOffsetToMicrotask(const llvm::Function &Callee, Distance d) {
     if (d < 1) {
       LOG_WARNING("OMP offset should be > 2 for non-omp-internal args to outlined region")
       return d;
     }
-    if (isOmpExecutor(c)) {
+    if (isOmpExecutor(Callee)) {
       return d - Distance{1};
     }
     LOG_WARNING("Unsupported OMP call.")

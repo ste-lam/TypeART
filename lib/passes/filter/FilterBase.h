@@ -82,6 +82,10 @@ class BaseFilter : public Filter {
   };
 
  private:
+  enum VisitResult {
+    VR_Continue = 0,
+    VR_Stop,
+  };
 
   llvm::iterator_range<llvm::Function*> callees(const llvm::CallBase &Inst) {
     if (Inst.isIndirectCall()) {
@@ -143,10 +147,57 @@ class BaseFilter : public Filter {
     return true;
   }
 
-  enum VisitResult {
-    VR_Continue = 0,
-    VR_Stop,
-  };
+  VisitResult followCallee(const llvm::CallBase &Site, const llvm::Function &Callee, FPath& fpath, IRPath &path2def) {
+      assert(Site.getCalledOperand() == &Callee || Site.isIndirectCall());
+
+      if (fpath.contains(Callee)) {
+        // Avoid recursion:
+        // TODO a continue may be wrong, if the function itself eventually calls "MPI"?
+        return VR_Continue;
+      }
+
+      // TODO: here we have a definition OR a omp call, e.g., @__kmpc_fork_call
+      LOG_DEBUG("Looking at: " << Callee.getName());
+
+      if constexpr (OmpHelper::WithOmp) {
+        if (OmpHelper::isOmpExecutor(Callee)) {
+          if (OmpHelper::canDiscardMicrotaskArg(Site, Callee, path2def)) {
+            LOG_DEBUG("Passed as internal OMP API arg, skipping " << path2def);
+            return VR_Continue;
+          }
+        }
+      }
+
+      auto argv = args(Site, Callee, path2def);
+      if (argv.size() > 1) {
+        LOG_DEBUG("All args are looked at.")
+      } else if (argv.size() == 1) {
+        LOG_DEBUG("Following 1 arg.");
+      } else {
+        LOG_DEBUG("No argument correlation.")
+      }
+
+      // idea: add an arg expand!
+
+      if constexpr (OmpHelper::WithOmp) {
+        if (OmpHelper::isOmpExecutor(Callee)) {
+          auto outlined = OmpHelper::getMicrotask(Site, Callee);
+          if (outlined) {
+            path2def.push(outlined.getValue());
+          }
+        }
+      }
+
+      fpath.push(path2def);
+
+      for (auto *arg : argv) {
+        if (const auto dfs_filter = DFSFuncFilter(arg, fpath); !dfs_filter) {
+          return VR_Stop;
+        }
+      }
+
+      return VR_Continue;
+  }
 
   VisitResult followPath(FPath& fpath, IRPath &path2def) {
     auto csite = path2def.getEnd();
@@ -154,56 +205,21 @@ class BaseFilter : public Filter {
       return VR_Continue;
     }
 
-    llvm::CallSite c(csite.getValue());
-    if (fpath.contains(c)) {
-      // Avoid recursion:
-      // TODO a continue may be wrong, if the function itself eventually calls "MPI"?
+    if (!llvm::isa<llvm::CallBase>(*csite)) {
+      return VR_Continue;
+    }
+    const auto &Site = *llvm::cast<llvm::CallBase>(*csite);
+
+    if (Site.isIndirectCall()) {
       return VR_Continue;
     }
 
-    // TODO: here we have a definition OR a omp call, e.g., @__kmpc_fork_call
-    LOG_DEBUG("Looking at: " << c.getCalledFunction()->getName());
+    const auto &Callee = *Site.getCalledFunction();
 
-    if constexpr (OmpHelper::WithOmp) {
-      if (OmpHelper::isOmpExecutor(c)) {
-        if (OmpHelper::canDiscardMicrotaskArg(c, path2def)) {
-          LOG_DEBUG("Passed as internal OMP API arg, skipping " << path2def);
-          return VR_Continue;
-        }
-      }
-    }
-
-    auto argv = args(c, path2def);
-    if (argv.size() > 1) {
-      LOG_DEBUG("All args are looked at.")
-    } else if (argv.size() == 1) {
-      LOG_DEBUG("Following 1 arg.");
-    } else {
-      LOG_DEBUG("No argument correlation.")
-    }
-
-    // idea: add an arg expand!
-
-    if constexpr (OmpHelper::WithOmp) {
-      if (OmpHelper::isOmpExecutor(c)) {
-        auto outlined = OmpHelper::getMicrotask(c);
-        if (outlined) {
-          path2def.push(outlined.getValue());
-        }
-      }
-    }
-
-    fpath.push(path2def);
-
-    for (auto* arg : argv) {
-      if (const auto dfs_filter = DFSFuncFilter(arg, fpath); !dfs_filter) {
-        return VR_Stop;
-      }
-    }
-
-    return VR_Continue;
+    return followCallee(Site, Callee, fpath, path2def);
   }
 
+  /// visits all reachable nodes within a function
   bool DFSfilter(llvm::Value* current, Path& path, PathList& plist) {
     if (current == nullptr) {
       LOG_FATAL("Called with nullptr: " << path);
@@ -211,6 +227,13 @@ class BaseFilter : public Filter {
     }
 
     path.push(current);
+
+    if constexpr (OmpHelper::WithOmp) {
+      if (OmpHelper::isTaskRelatedStore(current)) {
+        LOG_DEBUG("Keep, passed to OMP task struct. Current: " << *current )
+        return false;
+      }
+    }
 
     if (const auto *CallBaseInst = llvm::dyn_cast<llvm::CallBase>(current)) {
       // In-order analysis
@@ -240,18 +263,11 @@ class BaseFilter : public Filter {
       }
     }
 
+    //follow the flow to the next instructions if not already visited
     const auto successors = search_dir.search(current, path);
     for (auto* successor : successors) {
-      if constexpr (OmpHelper::WithOmp) {
-        if (OmpHelper::isTaskRelatedStore(successor)) {
-          LOG_DEBUG("Keep, passed to OMP task struct. Current: " << *current << " Succ: " << *successor)
-          path.push(successor);
-          return false;
-        }
-      }
-
+      // Avoid recursion (e.g., with store inst pointer operands pointing to an allocation)
       if (path.contains(successor)) {
-        // Avoid recursion (e.g., with store inst pointer operands pointing to an allocation)
         continue;
       }
 

@@ -29,6 +29,11 @@ inline bool isOmpContext(llvm::Function* f) {
   return false;
 }
 
+inline bool isOmpContext(llvm::Instruction* Inst) {
+  return isOmpContext(Inst->getFunction());
+}
+
+
 }  // namespace typeart::util::omp
 
 #endif  // TYPEART_OMPUTIL_H

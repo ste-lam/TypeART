@@ -71,88 +71,85 @@ enum class ArgCorrelation {
   GlobalMismatch,
 };
 
-inline std::pair<llvm::Argument*, int> findArg(CallSite c, const Path& p) {
+inline std::pair<llvm::Argument*, int> findArg(const llvm::CallBase& Site, const llvm::Function &Callee, const Path& p) {
+  assert(Site.getCalledOperand() == &Callee || Site.isIndirectCall());
+
   auto arg = p.getEndPrev();
   if (!arg) {
     return {nullptr, -1};
   }
 
   Value* in          = arg.getValue();
-  const auto arg_pos = llvm::find_if(c.args(), [&in](const Use& arg_use) -> bool { return arg_use.get() == in; });
+  const auto *arg_pos = llvm::find_if(Site.args(), [&in](const Use& arg_use) -> bool { return arg_use.get() == in; });
 
-  if (arg_pos == c.arg_end()) {
+  if (arg_pos == Site.arg_end()) {
     return {nullptr, -1};
   }
 
-  auto arg_num = std::distance(c.arg_begin(), arg_pos);
+  auto arg_num = Site.getArgOperandNo(arg_pos);
 
-  if (omp::OmpContext::isOmpExecutor(c)) {
-    auto outlined = omp::OmpContext::getMicrotask(c);
-    if (outlined) {
+  if (omp::OmpContext::isOmpExecutor(Callee)) {
+    if (auto outlined = omp::OmpContext::getMicrotask(Site, Callee)) {
       // Calc the offset of arg in executor to actual arg of the outline function:
-      auto offset        = omp::OmpContext::getArgOffsetToMicrotask(c, arg_num);
-      Argument* argument = (outlined.getValue()->arg_begin() + offset);
+      auto offset        = omp::OmpContext::getArgOffsetToMicrotask(Callee, arg_num);
+      Argument* argument = outlined.getValue()->getArg(offset);
       return {argument, offset};
     }
   }
 
-  Argument* argument = c.getCalledFunction()->getArg(arg_num);
+  Argument* argument = Callee.getArg(arg_num);
   return {argument, arg_num};
 }
 
-inline std::vector<llvm::Argument*> args(CallSite c, const Path& p) {
-  if (c.isIndirectCall()) {
-    return {};
-  }
+inline std::vector<llvm::Argument*> args(const llvm::CallBase& Site, const llvm::Function &Callee, const Path& P) {
+  assert(Site.getCalledOperand() == &Callee || Site.isIndirectCall());
 
-  auto [arg, _] = findArg(c, p);
+  auto [arg, _] = findArg(Site, Callee, P);
   if (arg != nullptr) {
     return {arg};
   }
 
-  auto *CalledFunction = c.getCalledFunction();
-  return {CalledFunction->arg_begin(), CalledFunction->arg_end()};
+  return {const_cast<llvm::Argument*>(Callee.arg_begin()), const_cast<llvm::Argument*>(Callee.arg_end())};
 }
+
 
 namespace detail {
 template <typename TypeID>
-ArgCorrelation correlate(CallSite c, const Path& p, TypeID&& isType) {
-  auto [arg, _] = findArg(c, p);
+ArgCorrelation correlate(const llvm::CallBase& Site, const llvm::Function &Callee, const Path& p, TypeID&& isType) {
+  assert(Site.getCalledOperand() == &Callee || Site.isIndirectCall());
 
-  if (!arg) {
-    const auto count_type_ptr = llvm::count_if(c.args(), [&](const auto& csite_arg) {
-      const auto type = csite_arg->getType();
-      return isType(type);
-    });
-    if (count_type_ptr > 0) {
-      return ArgCorrelation::Global;
+  auto [arg, _] = findArg(Site, Callee, p);
+
+  if (arg) {
+    auto type = arg->getType();
+
+    if (isType(type)) {
+      return ArgCorrelation::Exact;
     }
-    return ArgCorrelation::GlobalMismatch;
+    return ArgCorrelation::ExactMismatch;
   }
 
-  auto type = arg->getType();
+  const auto count_type_ptr = llvm::count_if(Site.args(), [&](const auto& csite_arg) {
+    const auto type = csite_arg->getType();
+    return isType(type);
+  });
 
-  if (isType(type)) {
-    return ArgCorrelation::Exact;
+  if (count_type_ptr > 0) {
+    return ArgCorrelation::Global;
   }
-  return ArgCorrelation::ExactMismatch;
+  return ArgCorrelation::GlobalMismatch;
 }
 }  // namespace detail
 
-inline ArgCorrelation correlate2void(CallSite c, const Path& p) {
-  return detail::correlate(
-      c, p, [](llvm::Type* type) { return type->isPointerTy() && type->getPointerElementType()->isIntegerTy(8); });
+inline ArgCorrelation correlate2void(const llvm::CallBase& Site, const llvm::Function &Callee, const Path& p) {
+  return detail::correlate(Site, Callee, p, [](llvm::Type* type) {
+    return type->isPointerTy() && type->getPointerElementType()->isIntegerTy(8);
+  });
 }
 
-inline ArgCorrelation correlate2void(const llvm::CallBase &c, const Path& p) {
-  //compat for old api
-  CallSite site((Instruction*) &c);
-  return correlate2void(site, p);
-}
-
-inline ArgCorrelation correlate2pointer(CallSite c, const Path& p) {
+inline ArgCorrelation correlate2pointer(const llvm::CallBase& Site, const llvm::Function &Callee, const Path& p) {
   // weaker predicate than void pointer, but more generally applicable
-  return detail::correlate(c, p, [](llvm::Type* type) { return type->isPointerTy(); });
+  return detail::correlate(Site, Callee, p, [](llvm::Type* type) { return type->isPointerTy(); });
 }
 
 inline bool isTempAlloc(llvm::Value* in) {

@@ -171,6 +171,7 @@ struct CallsitePath {
         intermediatePath.emplace_back(f, p);
         return;
       }
+
       llvm::CallSite c(csite.getValue());
       intermediatePath.emplace_back(c.getCalledFunction(), p);
     }
@@ -197,12 +198,10 @@ struct CallsitePath {
   }
 
   bool contains(llvm::CallSite c) {
-    llvm::Function* f = c.getCalledFunction();
-    if ((f != nullptr) && f == start) {
-      return true;
+    if (llvm::Function* f = c.getCalledFunction()) {
+      return contains(*f);
     }
-    return llvm::find_if(intermediatePath, [&f](const auto& node) { return node.first == f; }) !=
-           std::end(intermediatePath);
+    return false;
   }
 };
 
