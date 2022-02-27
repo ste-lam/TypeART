@@ -44,6 +44,22 @@ enum class FilterAnalysis {
   FollowDef,
 };
 
+static llvm::StringRef toStringRef(FilterAnalysis Enum) {
+  switch (Enum) {
+    case FilterAnalysis::Skip:
+      return "Skip";
+    case FilterAnalysis::Continue:
+      return "Continue";
+    case FilterAnalysis::Keep:
+      return "Keep";
+    case FilterAnalysis::Filter:
+      return "Filter";
+    case FilterAnalysis::FollowDef:
+      return "FollowDef";
+  }
+}
+
+
 template <typename CallSiteHandler, typename Search, typename OmpHelper = omp::EmptyContext>
 class BaseFilter : public Filter {
   CallSiteHandler handler;
@@ -87,7 +103,7 @@ class BaseFilter : public Filter {
     VR_Stop,
   };
 
-  std::vector<llvm::Function*> callees(const llvm::CallBase &Inst) {
+  inline std::vector<llvm::Function*> callees(const llvm::CallBase &Inst) {
     if (Inst.isIndirectCall()) {
       if constexpr (CallSiteHandler::Support::Callees) {
         return handler.callees(Inst);
@@ -181,9 +197,8 @@ class BaseFilter : public Filter {
 
       if constexpr (OmpHelper::WithOmp) {
         if (OmpHelper::isOmpExecutor(Callee)) {
-          auto outlined = OmpHelper::getMicrotask(Site, Callee);
-          if (outlined) {
-            path2def.push(outlined.getValue());
+          if (auto OmpMicrotask = OmpHelper::getMicrotask(Site, Callee)) {
+            path2def.push(OmpMicrotask.getValue());
           }
         }
       }
@@ -230,36 +245,35 @@ class BaseFilter : public Filter {
 
     if constexpr (OmpHelper::WithOmp) {
       if (OmpHelper::isTaskRelatedStore(current)) {
-        LOG_DEBUG("Keep, passed to OMP task struct. Current: " << *current )
+        LOG_DEBUG("Keep, passed to OMP task struct. Current: " << path.getEnd() << " Prev:" << path.getEndPrev() )
         return false;
       }
     }
 
     if (const auto *CallBaseInst = llvm::dyn_cast<llvm::CallBase>(current)) {
       // In-order analysis
-      const auto status = callsite(*CallBaseInst, path);
-      switch (status) {
+      switch (const auto status = callsite(*CallBaseInst, path)) {
         case FilterAnalysis::Skip:
           path.pop();
           return true;
 
-      case FilterAnalysis::Keep:
-        LOG_DEBUG("Callsite check, keep")
-        return false;
+        case FilterAnalysis::Keep:
+          LOG_DEBUG("Callsite check, keep")
+          return false;
 
-      case FilterAnalysis::FollowDef:
-        LOG_DEBUG("Analyze definition in path");
-        // store path (with the callsite) for a function recursive check later
-        plist.emplace_back(path);
-        break;
-
-      case FilterAnalysis::Continue:
-      case FilterAnalysis::Filter:
+        case FilterAnalysis::FollowDef:
+          LOG_DEBUG("Analyze definition in path");
+          // store path (with the callsite) for a function recursive check later
+          plist.emplace_back(path);
           break;
 
-      default:
-        llvm_unreachable("unknown/undefined enum value");
-        break;
+        case FilterAnalysis::Continue:
+        case FilterAnalysis::Filter:
+            break;
+
+        default:
+          llvm_unreachable("unknown/undefined enum value");
+          break;
       }
     }
 

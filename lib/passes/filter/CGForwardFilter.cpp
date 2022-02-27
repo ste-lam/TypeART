@@ -96,14 +96,14 @@ FilterAnalysis CGFilterImpl::decl(const llvm::CallBase &current, const Path& p) 
     }
   }
 
-  const auto searchCG = [&](auto from) {
+  const auto searchCG = [&](const auto &Callee) {
     if (call_graph) {
-      return call_graph->reachable(std::string{from->getName()}, filter);
+      return call_graph->reachable(std::string{Callee.getName()}, filter);
     }
     return CGInterface::ReachabilityResult::unknown;
   };
 
-  const auto reached = searchCG(current.getCalledFunction());
+  const auto reached = searchCG(Callee);
 
   switch (reached) {
     case CGInterface::ReachabilityResult::reaches:

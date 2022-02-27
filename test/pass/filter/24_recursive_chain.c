@@ -25,7 +25,6 @@ void foo() {
   ring(&a, &b, &c, ring_index);
 }
 
-// CHECK: MemInstFinderPass
 // CHECK: > Stack Memory
 // CHECK-NEXT: Alloca                 :  3.00
 // CHECK-NEXT: Stack call filtered %  :  0.00

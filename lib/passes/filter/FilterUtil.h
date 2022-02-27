@@ -71,42 +71,45 @@ enum class ArgCorrelation {
   GlobalMismatch,
 };
 
-inline std::pair<llvm::Argument*, int> findArg(const llvm::CallBase& Site, const llvm::Function &Callee, const Path& p) {
+inline std::vector<llvm::Argument*> findArgs(const llvm::CallBase& Site, const llvm::Function &Callee, const Path& p) {
   assert(Site.getCalledOperand() == &Callee || Site.isIndirectCall());
 
   auto arg = p.getEndPrev();
   if (!arg) {
-    return {nullptr, -1};
+    return {};
   }
 
-  Value* in          = arg.getValue();
-  const auto *arg_pos = llvm::find_if(Site.args(), [&in](const Use& arg_use) -> bool { return arg_use.get() == in; });
+  const auto OmpMicrotask = omp::OmpContext::isOmpExecutor(Callee) ? omp::OmpContext::getMicrotask(Site, Callee) : None;
 
-  if (arg_pos == Site.arg_end()) {
-    return {nullptr, -1};
-  }
+  Value* ArgValue = arg.getValue();
 
-  auto arg_num = Site.getArgOperandNo(arg_pos);
-
-  if (omp::OmpContext::isOmpExecutor(Callee)) {
-    if (auto outlined = omp::OmpContext::getMicrotask(Site, Callee)) {
-      // Calc the offset of arg in executor to actual arg of the outline function:
-      auto offset        = omp::OmpContext::getArgOffsetToMicrotask(Callee, arg_num);
-      Argument* argument = outlined.getValue()->getArg(offset);
-      return {argument, offset};
+  std::vector<llvm::Argument*> Ret{};
+  for (const auto &ArgUse: Site.args()) {
+    if (ArgUse.get() != ArgValue) {
+      continue;
     }
-  }
 
-  Argument* argument = Callee.getArg(arg_num);
-  return {argument, arg_num};
+    const auto ArgNo = ArgUse.getOperandNo();
+
+    if (OmpMicrotask) {
+      // Calc the offset of arg ArgValue executor to actual arg of the outline function:
+      auto offset = omp::OmpContext::getArgOffsetToMicrotask(Callee, ArgNo);
+
+      Ret.push_back(OmpMicrotask.getValue()->getArg(offset));
+      continue;
+    }
+
+    Ret.push_back(Callee.getArg(ArgNo));
+  }
+  
+  return Ret;
 }
 
 inline std::vector<llvm::Argument*> args(const llvm::CallBase& Site, const llvm::Function &Callee, const Path& P) {
   assert(Site.getCalledOperand() == &Callee || Site.isIndirectCall());
 
-  auto [arg, _] = findArg(Site, Callee, P);
-  if (arg != nullptr) {
-    return {arg};
+  if (auto args = findArgs(Site, Callee, P); !args.empty()) {
+    return args;
   }
 
   return {const_cast<llvm::Argument*>(Callee.arg_begin()), const_cast<llvm::Argument*>(Callee.arg_end())};
@@ -118,13 +121,12 @@ template <typename TypeID>
 ArgCorrelation correlate(const llvm::CallBase& Site, const llvm::Function &Callee, const Path& p, TypeID&& isType) {
   assert(Site.getCalledOperand() == &Callee || Site.isIndirectCall());
 
-  auto [arg, _] = findArg(Site, Callee, p);
-
-  if (arg) {
-    auto type = arg->getType();
-
-    if (isType(type)) {
-      return ArgCorrelation::Exact;
+  if (auto args = findArgs(Site, Callee, p); !args.empty()) {
+    for (auto *arg : args) {
+      auto *type = arg->getType();
+      if (isType(type)) {
+        return ArgCorrelation::Exact;
+      }
     }
     return ArgCorrelation::ExactMismatch;
   }
@@ -159,7 +161,7 @@ inline bool isTempAlloc(llvm::Value* in) {
 
     util::DefUseChain chain;
     chain.traverse(inst, [&f, &match](auto val) {
-      if (llvm::StoreInst* store = llvm::dyn_cast<StoreInst>(val)) {
+      if (auto* store = llvm::dyn_cast<StoreInst>(val)) {
         for (auto& args : f->args()) {
           if (&args == store->getValueOperand()) {
             match = true;
