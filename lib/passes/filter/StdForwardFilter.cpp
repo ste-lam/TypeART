@@ -73,10 +73,10 @@ FilterAnalysis filter::ForwardFilterImpl::decl(const llvm::CallBase &current, co
   assert(!current.isIndirectCall());
   const auto &Callee = *current.getCalledFunction();
 
-  const bool match_sig = matcher->match(current) == Matcher::MatchResult::Match;
+  const bool match_sig = matcher->match(current, Callee) == Matcher::MatchResult::Match;
   if (match_sig) {
     // if we have a deep_matcher it needs to trigger, otherwise analyze
-    if (deep_matcher->match(current) == Matcher::MatchResult::Match) {
+    if (deep_matcher->match(current, Callee) == Matcher::MatchResult::Match) {
       auto result = correlate2void(current, Callee, p);
       switch (result) {
         case ArgCorrelation::GlobalMismatch:
@@ -91,7 +91,7 @@ FilterAnalysis filter::ForwardFilterImpl::decl(const llvm::CallBase &current, co
   }
   // Not a relevant name (e.g. MPI), ask oracle if we have
   // some benign (C) function name
-  const auto oracle_match = oracle.match(current);
+  const auto oracle_match = oracle.match(current, Callee);
   switch (oracle_match) {
     case Matcher::MatchResult::ShouldSkip: {
       return FilterAnalysis::Skip;
@@ -110,9 +110,9 @@ FilterAnalysis filter::ForwardFilterImpl::def(const llvm::CallBase &current, con
   assert(!current.isIndirectCall());
   const auto &Callee = *current.getCalledFunction();
 
-  const bool match_sig = matcher->match(current) == Matcher::MatchResult::Match;
+  const bool match_sig = matcher->match(current, Callee) == Matcher::MatchResult::Match;
   if (match_sig) {
-    if (deep_matcher->match(current) == Matcher::MatchResult::Match) {
+    if (deep_matcher->match(current, Callee) == Matcher::MatchResult::Match) {
       auto result = correlate2void(current, Callee, p);
       switch (result) {
         case ArgCorrelation::GlobalMismatch:

@@ -83,7 +83,7 @@ FilterAnalysis CGFilterImpl::decl(const llvm::CallBase &current, const Path& p) 
   assert(!current.isIndirectCall());
   const auto &Callee = *current.getCalledFunction();
 
-  if (deep_matcher->match(current) == Matcher::MatchResult::Match) {
+  if (deep_matcher->match(current, Callee) == Matcher::MatchResult::Match) {
     auto result = correlate2void(current, Callee, p);
     switch (result) {
       case ArgCorrelation::GlobalMismatch:

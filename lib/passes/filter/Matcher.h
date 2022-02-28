@@ -29,7 +29,7 @@ class Matcher {
   Matcher& operator=(const Matcher&) = default;
   Matcher& operator=(Matcher&&) = default;
 
-  virtual MatchResult match(const llvm::CallBase &) const = 0;
+  virtual MatchResult match(const CallBase &, const Function &) const = 0;
 
   virtual ~Matcher() = default;
 };
@@ -37,7 +37,9 @@ class Matcher {
 template<Matcher::MatchResult Result>
 class StaticMatcher final : public Matcher {
  public:
-  MatchResult match(const llvm::CallBase &) const override {
+  MatchResult match(const CallBase &Site, const Function &Callee) const override {
+    assert(Site.isIndirectCall() || Site.getCalledFunction() == &Callee);
+
     return Result;
   };
 };
@@ -52,16 +54,12 @@ class DefaultStringMatcher final : public Matcher {
   explicit DefaultStringMatcher(const std::string& regex) : matcher(regex, Regex::NoFlags) {
   }
 
-  MatchResult match(const llvm::CallBase &c) const override {
-    auto *const f = c.getCalledFunction();
-    if (f != nullptr) {
-      const auto f_name  = util::demangle(f->getName());
-      const bool matched = matcher.match(f_name);
-      if (matched) {
-        return MatchResult::Match;
-      }
-    }
-    return MatchResult::NoMatch;
+  MatchResult match(const CallBase &Site, const Function &Callee) const override {
+    assert(Site.isIndirectCall() || Site.getCalledFunction() == &Callee);
+
+    const auto f_name  = util::demangle(Callee.getName());
+    const bool matched = matcher.match(f_name);
+    return matched ? MatchResult::Match : MatchResult::NoMatch;
   }
 };
 
@@ -74,26 +72,25 @@ class FunctionOracleMatcher final : public Matcher {
                                                 {"scanf"},  {"strtol"},       {"srand"}};
 
  public:
-  MatchResult match(const llvm::CallBase &c) const override {
-    auto *const f = c.getCalledFunction();
-    if (f != nullptr) {
-      const auto f_name = util::demangle(f->getName());
-      StringRef f_name_ref{f_name};
-      if (continue_set.count(f_name) > 0) {
-        return MatchResult::ShouldContinue;
-      }
-      if (skip_set.count(f_name) > 0) {
-        return MatchResult::ShouldSkip;
-      }
-      if (f_name_ref.startswith("__typeart_")) {
-        return MatchResult::ShouldSkip;
-      }
-      if (mem_operations.kind(f_name)) {
-        return MatchResult::ShouldSkip;
-      }
-      if (f_name_ref.startswith("__ubsan") || f_name_ref.startswith("__asan") || f_name_ref.startswith("__msan")) {
-        return MatchResult::ShouldContinue;
-      }
+  MatchResult match(const CallBase &Site, const Function &Callee) const override {
+    assert(Site.isIndirectCall() || Site.getCalledFunction() == &Callee);
+
+    const auto f_name = util::demangle(Callee.getName());
+    StringRef f_name_ref{f_name};
+    if (continue_set.count(f_name) > 0) {
+      return MatchResult::ShouldContinue;
+    }
+    if (skip_set.count(f_name) > 0) {
+      return MatchResult::ShouldSkip;
+    }
+    if (f_name_ref.startswith("__typeart_")) {
+      return MatchResult::ShouldSkip;
+    }
+    if (mem_operations.kind(f_name)) {
+      return MatchResult::ShouldSkip;
+    }
+    if (f_name_ref.startswith("__ubsan") || f_name_ref.startswith("__asan") || f_name_ref.startswith("__msan")) {
+      return MatchResult::ShouldContinue;
     }
     return MatchResult::NoMatch;
   }
