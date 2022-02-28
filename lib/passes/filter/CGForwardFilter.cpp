@@ -60,7 +60,7 @@ FilterAnalysis CGFilterImpl::precheck(Value* in, Function* start, const FPath& f
       return FilterAnalysis::Filter;
     }
 
-    if (llvm::AllocaInst* alloc = llvm::dyn_cast<AllocaInst>(in)) {
+    if (auto* alloc = llvm::dyn_cast<AllocaInst>(in)) {
       if (alloc->getAllocatedType()->isStructTy() && omp::OmpContext::allocaReachesTask(alloc)) {
         LOG_DEBUG("Alloca reaches task call " << *alloc)
         return FilterAnalysis::Filter;
