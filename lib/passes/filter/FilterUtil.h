@@ -71,6 +71,26 @@ enum class ArgCorrelation {
   GlobalMismatch,
 };
 
+static constexpr llvm::StringRef toStringRef(ArgCorrelation Enum) {
+  switch (Enum) {
+    case ArgCorrelation::NoMatch:
+      return "NoMatch";
+    case ArgCorrelation::Exact:
+      return "Exact";
+    case ArgCorrelation::ExactMismatch:
+      return "ExactMismatch";
+    case ArgCorrelation::Global:
+      return "Global";
+    case ArgCorrelation::GlobalMismatch:
+      return "GlobalMismatch";
+}
+}
+
+static constexpr llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, const ArgCorrelation &Enum) {
+  return OS << toStringRef(Enum);
+}
+
+
 inline std::vector<llvm::Argument*> findArgs(const llvm::CallBase& Site, const llvm::Function &Callee, const Path& p) {
   assert(Site.getCalledOperand() == &Callee || Site.isIndirectCall());
 
@@ -101,7 +121,7 @@ inline std::vector<llvm::Argument*> findArgs(const llvm::CallBase& Site, const l
 
     Ret.push_back(Callee.getArg(ArgNo));
   }
-  
+
   return Ret;
 }
 

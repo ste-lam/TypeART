@@ -44,7 +44,7 @@ enum class FilterAnalysis {
   FollowDef,
 };
 
-static llvm::StringRef toStringRef(FilterAnalysis Enum) {
+static constexpr llvm::StringRef toStringRef(FilterAnalysis Enum)  {
   switch (Enum) {
     case FilterAnalysis::Skip:
       return "Skip";
@@ -57,6 +57,10 @@ static llvm::StringRef toStringRef(FilterAnalysis Enum) {
     case FilterAnalysis::FollowDef:
       return "FollowDef";
   }
+}
+
+static constexpr llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, const FilterAnalysis &FA) {
+  return OS << toStringRef(FA);
 }
 
 
@@ -119,17 +123,15 @@ class BaseFilter : public Filter {
     /* do a pre-flow tracking check of value in  */
     if constexpr (CallSiteHandler::Support::PreCheck) {
       // is null in case of global:
-      llvm::Function* currentF = fpath.getCurrentFunc();
-      if (currentF != nullptr) {
+      if (auto* currentF = fpath.getCurrentFunc()) {
         auto status = handler.precheck(current, currentF, fpath);
+        LOG_DEBUG("Pre-check: " << status)
         switch (status) {
           case FilterAnalysis::Filter:
             fpath.pop();
-            LOG_DEBUG("Pre-check, filter")
             return true;
 
           case FilterAnalysis::Keep:
-            LOG_DEBUG("Pre-check, keep")
             return false;
 
           case FilterAnalysis::Skip:
@@ -250,9 +252,9 @@ class BaseFilter : public Filter {
       }
     }
 
-    if (const auto *CallBaseInst = llvm::dyn_cast<llvm::CallBase>(current)) {
+    if (const auto * Site = llvm::dyn_cast<llvm::CallBase>(current)) {
       // In-order analysis
-      switch (const auto status = callsite(*CallBaseInst, path)) {
+      switch (const auto status = callsite(*Site, path)) {
         case FilterAnalysis::Skip:
           path.pop();
           return true;
