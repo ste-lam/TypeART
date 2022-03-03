@@ -65,11 +65,30 @@ class DefaultStringMatcher final : public Matcher {
 
 class FunctionOracleMatcher final : public Matcher {
   const MemOps mem_operations{};
-  llvm::SmallDenseSet<llvm::StringRef> continue_set{{"sqrt"}, {"cos"}, {"sin"},    {"pow"},  {"fabs"},
-                                                    {"abs"},  {"log"}, {"fscanf"}, {"cbrt"}, {"gettimeofday"}};
-  llvm::SmallDenseSet<llvm::StringRef> skip_set{{"printf"}, {"sprintf"},      {"snprintf"}, {"fprintf"},
-                                                {"puts"},   {"__cxa_atexit"}, {"fopen"},    {"fclose"},
-                                                {"scanf"},  {"strtol"},       {"srand"}};
+  const StringMap<MatchResult> knownFunctions = {
+    {"sqrt", MatchResult::ShouldContinue},
+    {"cos", MatchResult::ShouldContinue},
+    {"sin", MatchResult::ShouldContinue},
+    {"pow", MatchResult::ShouldContinue},
+    {"fabs", MatchResult::ShouldContinue},
+    {"abs", MatchResult::ShouldContinue},
+    {"log", MatchResult::ShouldContinue},
+    {"fscanf", MatchResult::ShouldContinue},
+    {"cbrt", MatchResult::ShouldContinue},
+    {"gettimeofday", MatchResult::ShouldContinue},
+
+    {"printf", MatchResult::ShouldSkip},
+    {"sprintf", MatchResult::ShouldSkip},
+    {"snprintf", MatchResult::ShouldSkip},
+    {"fprintf", MatchResult::ShouldSkip},
+    {"puts", MatchResult::ShouldSkip},
+    {"__cxa_atexit", MatchResult::ShouldSkip},
+    {"fopen", MatchResult::ShouldSkip},
+    {"fclose", MatchResult::ShouldSkip},
+    {"scanf", MatchResult::ShouldSkip},
+    {"strtol", MatchResult::ShouldSkip},
+    {"srand", MatchResult::ShouldSkip},
+  };
 
  public:
   MatchResult match(const CallBase &Site, const Function &Callee) const override {
@@ -77,11 +96,9 @@ class FunctionOracleMatcher final : public Matcher {
 
     const auto f_name = util::demangle(Callee.getName());
     StringRef f_name_ref{f_name};
-    if (continue_set.count(f_name) > 0) {
-      return MatchResult::ShouldContinue;
-    }
-    if (skip_set.count(f_name) > 0) {
-      return MatchResult::ShouldSkip;
+
+    if (auto It = knownFunctions.find(f_name); It != knownFunctions.end()) {
+      return It->second;
     }
     if (f_name_ref.startswith("__typeart_")) {
       return MatchResult::ShouldSkip;
