@@ -13,7 +13,6 @@
 #include "MemOpVisitor.h"
 
 #include "analysis/MemOpData.h"
-#include "compat/CallSite.h"
 #include "support/Error.h"
 #include "support/Logger.h"
 #include "support/TypeUtil.h"
@@ -114,12 +113,15 @@ llvm::Expected<T*> getSingleUserAs(llvm::Value* value) {
   // Check for calls: In case of ASAN, the array cookie is passed to its API.
   // TODO: this may need to be extended to include other such calls
   const auto num_asan_calls = llvm::count_if(users, [](llvm::User* user) {
-    CallSite csite(user);
-    if (!(csite.isCall() || csite.isInvoke()) || csite.getCalledFunction() == nullptr) {
-      return false;
+    if (isa<CallInst>(user) || isa<InvokeInst>(user)) {
+      auto *const site = llvm::cast<llvm::CallBase>(user);
+      if (site->isIndirectCall()) {
+        return false;
+      }
+      const auto name = site->getCalledFunction()->getName();
+      return name.startswith("__asan");
     }
-    const auto name = csite.getCalledFunction()->getName();
-    return name.startswith("__asan");
+    return false;
   });
   RETURN_ERROR_IF(num_asan_calls != (num_users - 1),
                   "Expected a single user on value \"{}\" but found multiple potential candidates!", *value);

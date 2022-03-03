@@ -35,8 +35,8 @@ FunctionAnalysis::FunctionCounts FunctionAnalysis::analyze(Function* f) {
 
   for (auto& BB : *f) {
     for (auto& I : BB) {
-      CallSite site(&I);
-      if (site.isCall() || site.isInvoke()) {
+      if (isa<CallInst>(I) || isa<InvokeInst>(I)) {
+        CallSite site(&I);
         const auto callee        = site.getCalledFunction();
         const bool indirect_call = callee == nullptr;
 
@@ -61,9 +61,11 @@ FunctionAnalysis::FunctionCounts FunctionAnalysis::analyze(Function* f) {
           continue;
         }
 
-        ++count.def;
-        calls.def.push_back(site);
-        continue;
+        {
+          ++count.def;
+          calls.def.push_back(site);
+          continue;
+        }
       }
     }
   }
