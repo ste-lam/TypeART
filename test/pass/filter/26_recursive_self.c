@@ -4,29 +4,21 @@
 
 #include <stdlib.h>
 
-// this is also tested with 26_recursive_self or is it?
-
 extern void MPI_sink(void* a);
-extern int ring_index;
+extern int rand_value;
 
-void ring(int* x, int* y, int* z, int counter) {
+void rec(int* x, int* y, int* z, int counter) {
+  int q = 54654 * rand_value;
+
   if (counter == 0) {
     MPI_sink(x);
     return;
   }
 
-  ring(y, z, x, counter - 1);
+  rec(y, z, &q, counter - 1);
 }
 
-
-void foo() {
-  int a = 1;
-  int b = 2;
-  int c = 3;
-
-  ring(&a, &b, &c, ring_index);
-}
 
 // CHECK: > Stack Memory
-// CHECK-NEXT: Alloca                 :  3.00
+// CHECK-NEXT: Alloca                 :  1.00
 // CHECK-NEXT: Stack call filtered %  :  0.00

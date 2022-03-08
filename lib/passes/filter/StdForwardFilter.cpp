@@ -93,12 +93,12 @@ FilterAnalysis filter::ForwardFilterImpl::decl(const llvm::CallBase &current, co
   // some benign (C) function name
   const auto oracle_match = oracle.match(current, Callee);
   switch (oracle_match) {
-    case Matcher::MatchResult::ShouldSkip: {
+    case Matcher::MatchResult::ShouldSkip:
       return FilterAnalysis::Skip;
-    }
-    case Matcher::MatchResult::ShouldContinue: {
+
+    case Matcher::MatchResult::ShouldContinue:
       return FilterAnalysis::Continue;
-    }
+
     default:
       break;
   }
@@ -123,9 +123,9 @@ FilterAnalysis filter::ForwardFilterImpl::def(const llvm::CallBase &current, con
         default:
           return FilterAnalysis::Keep;
       }
-    } else {
-      return FilterAnalysis::Keep;
     }
+
+    return FilterAnalysis::Keep;
   }
 
   return FilterAnalysis::FollowDef;

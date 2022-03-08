@@ -82,12 +82,12 @@ class FunctionOracleMatcher final : public Matcher {
     {"snprintf", MatchResult::ShouldSkip},
     {"fprintf", MatchResult::ShouldSkip},
     {"puts", MatchResult::ShouldSkip},
-    {"__cxa_atexit", MatchResult::ShouldSkip},
     {"fopen", MatchResult::ShouldSkip},
     {"fclose", MatchResult::ShouldSkip},
     {"scanf", MatchResult::ShouldSkip},
     {"strtol", MatchResult::ShouldSkip},
     {"srand", MatchResult::ShouldSkip},
+    {"__cxa_atexit", MatchResult::ShouldSkip},
   };
 
  public:

@@ -57,27 +57,6 @@ struct OmpContext {
     return name.startswith("__kmpc") || name.startswith("omp_");
   }
 
-  static bool isOmpExecutor(const llvm::CallBase& c) {
-    if (c.isIndirectCall()) {
-      return false;
-    }
-    return isOmpExecutor(*c.getCalledFunction());
-  }
-
-  static bool isOmpExecutor(const llvm::CallSite& c) {
-    if (c.isIndirectCall()) {
-      return false;
-    }
-    return isOmpExecutor(*c.getCalledFunction());
-  }
-
-  static bool isOmpTaskAlloc(const llvm::CallBase& c) {
-    if (c.isIndirectCall()) {
-      return false;
-    }
-    return isOmpTaskAlloc(*c.getCalledFunction());
-  }
-
   static bool isOmpTaskAlloc(const llvm::CallSite& c) {
     if (c.isIndirectCall()) {
       return false;
@@ -99,14 +78,35 @@ struct OmpContext {
     return isOmpTaskRelated(*c.getCalledFunction());
   }
 
-  static bool isOmpHelper(const llvm::CallBase& c) {
+  static bool isOmpHelper(const llvm::CallSite& c) {
     if (c.isIndirectCall()) {
       return false;
     }
     return isOmpHelper(*c.getCalledFunction());
   }
 
-  static bool isOmpHelper(const llvm::CallSite& c) {
+  static bool isOmpExecutor(const llvm::CallSite& c) {
+    if (c.isIndirectCall()) {
+      return false;
+    }
+    return isOmpExecutor(*c.getCalledFunction());
+  }
+
+  static bool isOmpExecutor(const llvm::CallBase& c) {
+    if (c.isIndirectCall()) {
+      return false;
+    }
+    return isOmpExecutor(*c.getCalledFunction());
+  }
+
+  static bool isOmpTaskAlloc(const llvm::CallBase& c) {
+    if (c.isIndirectCall()) {
+      return false;
+    }
+    return isOmpTaskAlloc(*c.getCalledFunction());
+  }
+
+  static bool isOmpHelper(const llvm::CallBase& c) {
     if (c.isIndirectCall()) {
       return false;
     }
@@ -158,6 +158,7 @@ struct OmpContext {
     return false;
   }
 
+  // TODO: implement v/register-call handling
   static bool allocaReachesTask(llvm::AllocaInst* alloc) {
     if (!util::omp::isOmpContext(alloc->getFunction())) {
       return false;
@@ -174,9 +175,9 @@ struct OmpContext {
           return val->users();
         },
         [&found](auto value) {
-          llvm::CallSite site(value);
-          if (site.isCall() || site.isInvoke()) {
-            auto *const called = site.getCalledFunction();
+          if (llvm::isa<llvm::CallInst>(value) || llvm::isa<llvm::InvokeInst>(value)) {
+            auto *const site = llvm::cast<llvm::CallBase>(value);
+            auto *const called = site->getCalledFunction();
             if (called != nullptr && called->getName().startswith("__kmpc_omp_task(")) {
               found = true;
               return util::DefUseChain::cancel;

@@ -92,6 +92,7 @@ struct DefUseChain {
   }
 
  public:
+  /// traverses all users of a value
   template <typename CallBackF>
   void traverse(llvm::Value* start, CallBackF&& match) {
     LOG_DEBUG("Start traversal for value: " << util::dump(*start));
