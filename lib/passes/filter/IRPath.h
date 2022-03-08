@@ -72,7 +72,7 @@ struct IRPath {
   }
 
   bool contains(Node n) const {
-    return llvm::find_if(path, [&n](const auto* node) { return node == n; }) != std::end(path);
+    return llvm::is_contained(path, n);
   }
 };
 
@@ -110,7 +110,7 @@ inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const IRPath& p) {
 
 struct CallsitePath {
   // Node: IRPath leads to function:
-  using Node = std::pair<llvm::Function*, IRPath>;
+  using Node = std::pair<llvm::Argument*, IRPath>;
 
   // Structure: [Function (start) or null for global]{1} -> [Path -> Function]* -> (Path)?
   llvm::Optional<llvm::Function*> start;
@@ -138,8 +138,8 @@ struct CallsitePath {
       return nullptr;
     }
 
-    if (auto end = getEnd(); end) {
-      return end.getValue().first;
+    if (auto end = getEnd()) {
+      return end.getValue().first->getParent();
     }
     return nullptr;
   }
@@ -163,17 +163,8 @@ struct CallsitePath {
     return *std::prev(intermediatePath.end(), n);
   }
 
-  void push(const IRPath& p) {
-    if (auto csite = p.getEnd()) {
-      // Omp extension: we may pass the outlined area directly as llvm::Function
-      if (auto f = llvm::dyn_cast<llvm::Function>(csite.getValue())) {
-        intermediatePath.emplace_back(f, p);
-        return;
-      }
-
-      llvm::CallSite c(csite.getValue());
-      intermediatePath.emplace_back(c.getCalledFunction(), p);
-    }
+  void push(const llvm::Argument& Argument, const IRPath& Path) {
+    intermediatePath.emplace_back(const_cast<llvm::Argument*>(&Argument), Path);
   }
 
   void pushFinal(const IRPath& p) {
@@ -186,28 +177,30 @@ struct CallsitePath {
     }
   }
 
+  bool contains(const llvm::Argument &Argument) {
+    //NOTE: we do not check for the parent of the function-argument if it's the starting function!
+    //see test/pass/filter/26_recursive_self.c
+
+    return llvm::find_if(intermediatePath, [&Argument](const Node& node) {
+             return node.first == &Argument;
+           }) != std::end(intermediatePath);
+  }
+
   bool contains(const llvm::Function &Func) {
     if (start.hasValue() && start.getValue() == &Func) {
       return true;
     }
 
-    return llvm::find_if(intermediatePath, [&Func](const auto& node) {
-             return node.first == &Func;
+    return llvm::find_if(intermediatePath, [&Func](const Node& node) {
+             return node.first->getParent() == &Func;
            }) != std::end(intermediatePath);
-  }
-
-  bool contains(llvm::CallSite c) {
-    if (llvm::Function* f = c.getCalledFunction()) {
-      return contains(*f);
-    }
-    return false;
   }
 };
 
 inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const CallsitePath::Node& n) {
   auto f = n.first;
   if (f != nullptr) {
-    os << f->getName();
+    os << f->getParent()->getName();
   } else {
     os << "--";
   }

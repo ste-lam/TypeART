@@ -156,7 +156,7 @@ class BaseFilter : public Filter {
     }
 
     for (auto &path2def : defPath) {
-      if (followPath(fpath, path2def) == VR_Stop) {
+      if (traverseCallees(fpath, path2def) == VR_Stop) {
         return false;
       }
     }
@@ -165,14 +165,22 @@ class BaseFilter : public Filter {
     return true;
   }
 
-  VisitResult followCallee(const llvm::CallBase &Site, const llvm::Function &Callee, FPath& fpath, IRPath &path2def) {
-      assert(Site.getCalledOperand() == &Callee || Site.isIndirectCall());
-
-      if (fpath.contains(Callee)) {
-        // Avoid recursion:
-        // TODO a continue may be wrong, if the function itself eventually calls "MPI"?
-        return VR_Continue;
+  VisitResult traverseCallees(FPath& fpath, IRPath &path2def) {
+    if (auto Site = path2def.getEnd()) {
+      if (const auto* Base = llvm::dyn_cast<llvm::CallBase>(*Site)) {
+        for (const auto* Callee : callees(*Base)) {
+          if (traverseCallee(*Base, *Callee, fpath, path2def) == VR_Stop) {
+            return VR_Stop;
+          }
+        }
       }
+    }
+
+    return VR_Continue;
+  }
+
+  VisitResult traverseCallee(const llvm::CallBase &Site, const llvm::Function &Callee, FPath& fpath, IRPath &path2def) {
+      assert(Site.getCalledOperand() == &Callee || Site.isIndirectCall());
 
       // TODO: here we have a definition OR a omp call, e.g., @__kmpc_fork_call
       LOG_DEBUG("Looking at: " << Callee.getName());
@@ -187,15 +195,7 @@ class BaseFilter : public Filter {
       }
 
       auto argv = args(Site, Callee, path2def);
-      if (argv.size() > 1) {
-        LOG_DEBUG("All args are looked at.")
-      } else if (argv.size() == 1) {
-        LOG_DEBUG("Following 1 arg.");
-      } else {
-        LOG_DEBUG("No argument correlation.")
-      }
-
-      // idea: add an arg expand!
+      LOG_DEBUG("Following " << argv.size() << " / " << Site.arg_size() << " of args.");
 
       if constexpr (OmpHelper::WithOmp) {
         if (OmpHelper::isOmpExecutor(Callee)) {
@@ -205,32 +205,21 @@ class BaseFilter : public Filter {
         }
       }
 
-      fpath.push(path2def);
-
-      for (auto *arg : argv) {
-        if (const auto dfs_filter = DFSFuncFilter(arg, fpath); !dfs_filter) {
-          return VR_Stop;
-        }
-      }
-
-      return VR_Continue;
+      return traverseArguments(argv, fpath, path2def);
   }
 
-  VisitResult followPath(FPath& fpath, IRPath &path2def) {
-    auto csite = path2def.getEnd();
-    if (!csite) {
-      return VR_Continue;
-    }
+  VisitResult traverseArguments(const std::vector<const llvm::Argument*> &Args, FPath& fpath, IRPath &path2def) {
+    for (const auto &Arg : Args) {
+      // avoid recursion! Do not follow an argument twice
+      if (fpath.contains(*Arg)) {
+        continue;
+      }
 
-    if (!llvm::isa<llvm::CallBase>(*csite)) {
-      return VR_Continue;
-    }
-    const auto &Site = *llvm::cast<llvm::CallBase>(*csite);
-
-    for (const auto *Callee: callees(Site)) {
-      if (followCallee(Site, *Callee, fpath, path2def) == VR_Stop) {
+      fpath.push(*Arg, path2def);
+      if (const auto dfs_filter = DFSFuncFilter(const_cast<llvm::Argument*>(Arg), fpath); !dfs_filter) {
         return VR_Stop;
       }
+      fpath.pop();
     }
 
     return VR_Continue;

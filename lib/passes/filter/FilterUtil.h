@@ -91,7 +91,7 @@ static constexpr llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, const ArgC
 }
 
 
-inline std::vector<llvm::Argument*> findArgs(const llvm::CallBase& Site, const llvm::Function &Callee, const Path& p) {
+inline std::vector<const llvm::Argument*> findArgs(const llvm::CallBase& Site, const llvm::Function &Callee, const Path& p) {
   assert(Site.getCalledOperand() == &Callee || Site.isIndirectCall());
 
   auto arg = p.getEndPrev();
@@ -103,7 +103,7 @@ inline std::vector<llvm::Argument*> findArgs(const llvm::CallBase& Site, const l
 
   Value* ArgValue = arg.getValue();
 
-  std::vector<llvm::Argument*> Ret{};
+  std::vector<const llvm::Argument*> Ret{};
   for (const auto &ArgUse: Site.args()) {
     if (ArgUse.get() != ArgValue) {
       continue;
@@ -125,14 +125,18 @@ inline std::vector<llvm::Argument*> findArgs(const llvm::CallBase& Site, const l
   return Ret;
 }
 
-inline std::vector<llvm::Argument*> args(const llvm::CallBase& Site, const llvm::Function &Callee, const Path& P) {
+inline std::vector<const llvm::Argument*> args(const llvm::CallBase& Site, const llvm::Function &Callee, const Path& P) {
   assert(Site.getCalledOperand() == &Callee || Site.isIndirectCall());
+  assert(P.getEnd().getValue() == &Site);
 
   if (auto args = findArgs(Site, Callee, P); !args.empty()) {
     return args;
   }
 
-  return {const_cast<llvm::Argument*>(Callee.arg_begin()), const_cast<llvm::Argument*>(Callee.arg_end())};
+  std::vector<const llvm::Argument*> args(Callee.arg_size());
+  args.clear();
+  llvm::for_each(Callee.args(), [&](auto &a) { args.push_back(&a); });
+  return args;
 }
 
 
@@ -140,6 +144,7 @@ namespace detail {
 template <typename TypeID>
 ArgCorrelation correlate(const llvm::CallBase& Site, const llvm::Function &Callee, const Path& p, TypeID&& isType) {
   assert(Site.getCalledOperand() == &Callee || Site.isIndirectCall());
+  assert(p.getEnd().getValue() == &Site);
 
   if (auto args = findArgs(Site, Callee, p); !args.empty()) {
     for (auto *arg : args) {
@@ -194,6 +199,7 @@ inline bool isTempAlloc(llvm::Value* in) {
 
     return match;
   };
+
   if (auto *inst = llvm::dyn_cast<llvm::AllocaInst>(in)) {
     if (inst->getAllocatedType()->isPointerTy()) {
       return farg_stored_to(inst);
