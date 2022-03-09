@@ -47,25 +47,23 @@ FilterAnalysis filter::ForwardFilterImpl::precheck(Value* in, Function* start, c
     return FilterAnalysis::Filter;
   }
 
-  if (!fpath.empty()) {
-    // the value is part of a call chain
-    return FilterAnalysis::Continue;
-  }
+  if (fpath.empty()) {
+    // These conditions (temp alloc and alloca reaches task)
+    // are only interesting if filter just started (aka fpath is empty)
+    if (auto* alloc = llvm::dyn_cast<AllocaInst>(in)) {
+      if (isTempAlloc(in)) {
+        LOG_DEBUG("Alloca is a temporary " << *in);
+        return FilterAnalysis::Filter;
+      }
 
-  // These conditions (temp alloc and alloca reaches task)
-  // are only interesting if filter just started (aka fpath is empty)
-  if (isTempAlloc(in)) {
-    LOG_DEBUG("Alloca is a temporary " << *in);
-    return FilterAnalysis::Filter;
-  }
-
-  if (auto* alloc = llvm::dyn_cast<AllocaInst>(in)) {
-    if (alloc->getAllocatedType()->isStructTy() && omp::OmpContext::allocaReachesTask(alloc)) {
-      LOG_DEBUG("Alloca reaches task call " << *alloc)
-      return FilterAnalysis::Filter;
+      if (alloc->getAllocatedType()->isStructTy() && omp::OmpContext::allocaReachesTask(alloc)) {
+        LOG_DEBUG("Alloca reaches task call " << *alloc)
+        return FilterAnalysis::Filter;
+      }
     }
   }
 
+  // the value is part of a call chain
   return FilterAnalysis::Continue;
 }
 
@@ -89,6 +87,7 @@ FilterAnalysis filter::ForwardFilterImpl::decl(const llvm::CallBase &current, co
       }
     }
   }
+
   // Not a relevant name (e.g. MPI), ask oracle if we have
   // some benign (C) function name
   const auto oracle_match = oracle.match(current, Callee);
@@ -100,7 +99,7 @@ FilterAnalysis filter::ForwardFilterImpl::decl(const llvm::CallBase &current, co
       return FilterAnalysis::Continue;
 
     default:
-      break;
+      return FilterAnalysis::Keep;
   }
 
   return FilterAnalysis::Keep;
