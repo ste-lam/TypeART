@@ -57,39 +57,11 @@ struct OmpContext {
     return name.startswith("__kmpc") || name.startswith("omp_");
   }
 
-  static bool isOmpTaskAlloc(const llvm::CallSite& c) {
-    if (c.isIndirectCall()) {
-      return false;
-    }
-    return isOmpTaskAlloc(*c.getCalledFunction());
-  }
-
-  static bool isOmpTaskCall(const llvm::CallSite& c) {
-    if (c.isIndirectCall()) {
-      return false;
-    }
-    return isOmpTaskCall(*c.getCalledFunction());
-  }
-
   static bool isOmpTaskRelated(const llvm::CallSite& c) {
     if (c.isIndirectCall()) {
       return false;
     }
     return isOmpTaskRelated(*c.getCalledFunction());
-  }
-
-  static bool isOmpHelper(const llvm::CallSite& c) {
-    if (c.isIndirectCall()) {
-      return false;
-    }
-    return isOmpHelper(*c.getCalledFunction());
-  }
-
-  static bool isOmpExecutor(const llvm::CallSite& c) {
-    if (c.isIndirectCall()) {
-      return false;
-    }
-    return isOmpExecutor(*c.getCalledFunction());
   }
 
   static bool isOmpExecutor(const llvm::CallBase& c) {

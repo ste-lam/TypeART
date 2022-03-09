@@ -13,8 +13,6 @@
 #ifndef TYPEART_IRPATH_H
 #define TYPEART_IRPATH_H
 
-#include "compat/CallSite.h"
-
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/Function.h"
