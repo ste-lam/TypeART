@@ -111,6 +111,10 @@ inline std::vector<const llvm::Argument*> findArgs(const llvm::CallBase& Site, c
 
     const auto ArgNo = ArgUse.getOperandNo();
 
+    if (Site.paramHasAttr(ArgNo, llvm::Attribute::StructRet)) {
+      continue;
+    }
+
     if (OmpMicrotask) {
       // Calc the offset of arg ArgValue executor to actual arg of the outline function:
       auto offset = omp::OmpContext::getArgOffsetToMicrotask(Callee, ArgNo);
