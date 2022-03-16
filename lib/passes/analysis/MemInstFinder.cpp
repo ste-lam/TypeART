@@ -11,6 +11,7 @@
 //
 
 #include "MemInstFinder.h"
+#include "FilterPlugin.h"
 
 #include "MemOpVisitor.h"
 #include "analysis/MemOpData.h"
@@ -36,9 +37,9 @@
 #include "llvm/IR/Type.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
+#include "CallFilter.h"
 
 #include <algorithm>
-#include <cstdlib>
 #include <sstream>
 #include <utility>
 
@@ -58,94 +59,14 @@ ALWAYS_ENABLED_STATISTIC(NumCallFilteredGlobals, "Number of filtered globals");
 
 namespace typeart::analysis {
 
-namespace filter {
-class CallFilter {
-  std::unique_ptr<typeart::filter::Filter> fImpl;
-
- public:
-  explicit CallFilter(const MemInstFinderConfig& config);
-  CallFilter(const CallFilter&) = delete;
-  CallFilter(CallFilter&&)      = default;
-  bool operator()(llvm::AllocaInst*);
-  bool operator()(llvm::GlobalValue*);
-  CallFilter& operator=(CallFilter&&) noexcept;
-  CallFilter& operator=(const CallFilter&) = delete;
-  virtual ~CallFilter();
-};
-
-}  // namespace filter
-
-namespace filter {
-
-namespace detail {
-static std::unique_ptr<typeart::filter::Filter> make_filter(const MemInstFinderConfig& config) {
-  using namespace typeart::filter;
-  const auto filter_id   = config.filter.implementation;
-  const std::string glob = config.filter.ClCallFilterGlob;
-
-  if (filter_id == FilterImplementation::none || !config.filter.ClUseCallFilter) {
-    LOG_DEBUG("Return no-op filter")
-    return std::make_unique<NoOpFilter>();
-  } else if (filter_id == FilterImplementation::cg) {
-    if (config.filter.ClCallFilterCGFile.empty()) {
-      LOG_FATAL("CG File not set!");
-      std::exit(1);
-    }
-    LOG_DEBUG("Return CG filter with CG file @ " << config.filter.ClCallFilterCGFile)
-    auto json_cg = JSONCG::getJSON(config.filter.ClCallFilterCGFile);
-    auto matcher = std::make_unique<DefaultStringMatcher>(util::glob2regex(glob));
-    return std::make_unique<CGForwardFilter>(glob, std::move(json_cg), std::move(matcher));
-  } else {
-    LOG_DEBUG("Return default filter")
-    auto matcher         = std::make_unique<DefaultStringMatcher>(util::glob2regex(glob));
-    const auto deep_glob = config.filter.ClCallFilterDeepGlob;
-    auto deep_matcher    = std::make_unique<DefaultStringMatcher>(util::glob2regex(deep_glob));
-    return std::make_unique<StandardForwardFilter>(std::move(matcher), std::move(deep_matcher));
-  }
-}
-}  // namespace detail
-
-CallFilter::CallFilter(const MemInstFinderConfig& config) : fImpl{detail::make_filter(config)} {
-}
-
-bool CallFilter::operator()(AllocaInst* in) {
-  LOG_DEBUG("Analyzing value: " << util::dump(*in));
-  fImpl->setMode(/*search mallocs = */ false);
-  fImpl->setStartingFunction(in->getParent()->getParent());
-  const auto filter_ = fImpl->filter(in);
-  if (filter_) {
-    LOG_DEBUG("Filtering value: " << util::dump(*in) << "\n");
-  } else {
-    LOG_DEBUG("Keeping value: " << util::dump(*in) << "\n");
-  }
-  return filter_;
-}
-
-bool CallFilter::operator()(GlobalValue* g) {
-  LOG_DEBUG("Analyzing value: " << util::dump(*g));
-  fImpl->setMode(/*search mallocs = */ false);
-  fImpl->setStartingFunction(nullptr);
-  const auto filter_ = fImpl->filter(g);
-  if (filter_) {
-    LOG_DEBUG("Filtering value: " << util::dump(*g) << "\n");
-  } else {
-    LOG_DEBUG("Keeping value: " << util::dump(*g) << "\n");
-  }
-  return filter_;
-}
-
-CallFilter& CallFilter::operator=(CallFilter&&) noexcept = default;
-
-CallFilter::~CallFilter() = default;
-
-}  // namespace filter
 
 class MemInstFinderPass : public MemInstFinder {
  private:
   MemOpVisitor mOpsCollector;
-  filter::CallFilter filter;
+  FilterBuilder filterBuilder;
   llvm::DenseMap<const llvm::Function*, FunctionData> functionMap;
   MemInstFinderConfig config;
+  CallFilter filter{filterBuilder()};
 
  public:
   explicit MemInstFinderPass(const MemInstFinderConfig&);
@@ -158,11 +79,11 @@ class MemInstFinderPass : public MemInstFinder {
   ~MemInstFinderPass() = default;
 
  private:
-  bool runOnFunction(llvm::Function&);
+  bool runOnFunction(llvm::Function& function);
 };
 
 MemInstFinderPass::MemInstFinderPass(const MemInstFinderConfig& config)
-    : mOpsCollector(config.collect_alloca, config.collect_heap), filter(config), config(config) {
+    : mOpsCollector(config.collect_alloca, config.collect_heap), filterBuilder(config.filter), config(config) {
 }
 
 bool MemInstFinderPass::runOnModule(Module& module) {
@@ -170,85 +91,83 @@ bool MemInstFinderPass::runOnModule(Module& module) {
   auto& globals = mOpsCollector.globals;
   NumDetectedGlobals += globals.size();
   if (config.filter.ClFilterGlobal) {
-    globals.erase(llvm::remove_if(
-                      globals,
-                      [&](const auto gdata) {  // NOLINT
-                        GlobalVariable* global = gdata.global;
-                        const auto name        = global->getName();
+    const auto& RemoveGlobal = [&](const auto gdata) {  // NOLINT
+      GlobalVariable* global = gdata.global;
+      const auto name        = global->getName();
 
-                        LOG_DEBUG("Analyzing global: " << name);
+      LOG_DEBUG("Analyzing global: " << name);
 
-                        if (name.empty()) {
-                          return true;
-                        }
+      if (name.empty()) {
+        return true;
+      }
 
-                        if (name.startswith("llvm.") || name.startswith("__llvm_gcov") ||
-                            name.startswith("__llvm_gcda") || name.startswith("__profn")) {
-                          // 2nd and 3rd check: Check if the global is private gcov data (--coverage).
-                          LOG_DEBUG("LLVM startswith \"llvm\"")
-                          return true;
-                        }
+      if (name.startswith("llvm.") || name.startswith("__llvm_gcov") || name.startswith("__llvm_gcda") ||
+          name.startswith("__profn")) {
+        // 2nd and 3rd check: Check if the global is private gcov data (--coverage).
+        LOG_DEBUG("LLVM startswith \"llvm\"")
+        return true;
+      }
 
-                        if (name.startswith("___asan") || name.startswith("__msan") || name.startswith("__tsan")) {
-                          LOG_DEBUG("LLVM startswith \"sanitizer\"")
-                          return true;
-                        }
+      if (name.startswith("___asan") || name.startswith("__msan") || name.startswith("__tsan")) {
+        LOG_DEBUG("LLVM startswith \"sanitizer\"")
+        return true;
+      }
 
-                        if (global->hasInitializer()) {
-                          auto* ini            = global->getInitializer();
-                          std::string ini_name = util::dump(*ini);
+      if (global->hasInitializer()) {
+        auto* ini            = global->getInitializer();
+        std::string ini_name = util::dump(*ini);
 
-                          if (llvm::StringRef(ini_name).contains("std::ios_base::Init")) {
-                            LOG_DEBUG("std::ios");
-                            return true;
-                          }
-                        }
+        if (llvm::StringRef(ini_name).contains("std::ios_base::Init")) {
+          LOG_DEBUG("std::ios");
+          return true;
+        }
+      }
 
-                        if (global->hasSection()) {
-                          // for instance, filters:
-                          //   a) (Coverage) -fprofile-instr-generate -fcoverage-mapping
-                          //   b) (PGO) -fprofile-instr-generate
-                          StringRef Section = global->getSection();
-                          // Globals from llvm.metadata aren't emitted, do not instrument them.
-                          if (Section == "llvm.metadata") {
-                            LOG_DEBUG("metadata");
-                            return true;
-                          }
-                          // Do not instrument globals from special LLVM sections.
-                          if (Section.find("__llvm") != StringRef::npos || Section.find("__LLVM") != StringRef::npos) {
-                            LOG_DEBUG("llvm section");
-                            return true;
-                          }
-                        }
+      if (global->hasSection()) {
+        // for instance, filters:
+        //   a) (Coverage) -fprofile-instr-generate -fcoverage-mapping
+        //   b) (PGO) -fprofile-instr-generate
+        StringRef Section = global->getSection();
+        // Globals from llvm.metadata aren't emitted, do not instrument them.
+        if (Section == "llvm.metadata") {
+          LOG_DEBUG("metadata");
+          return true;
+        }
+        // Do not instrument globals from special LLVM sections.
+        if (Section.find("__llvm") != StringRef::npos || Section.find("__LLVM") != StringRef::npos) {
+          LOG_DEBUG("llvm section");
+          return true;
+        }
+      }
 
-                        if ((global->getLinkage() == GlobalValue::ExternalLinkage && global->isDeclaration())) {
-                          LOG_DEBUG("Linkage: External");
-                          return true;
-                        }
+      if ((global->getLinkage() == GlobalValue::ExternalLinkage && global->isDeclaration())) {
+        LOG_DEBUG("Linkage: External");
+        return true;
+      }
 
-                        Type* global_type = global->getValueType();
-                        if (!global_type->isSized()) {
-                          LOG_DEBUG("not sized");
-                          return true;
-                        }
+      Type* global_type = global->getValueType();
+      if (!global_type->isSized()) {
+        LOG_DEBUG("not sized");
+        return true;
+      }
 
-                        if (global_type->isArrayTy()) {
-                          global_type = global_type->getArrayElementType();
-                        }
-                        if (auto structType = dyn_cast<StructType>(global_type)) {
-                          if (structType->isOpaque()) {
-                            LOG_DEBUG("Encountered opaque struct " << global_type->getStructName() << " - skipping...");
-                            return true;
-                          }
-                        }
-                        return false;
-                      }),
-                  globals.end());
+      if (global_type->isArrayTy()) {
+        global_type = global_type->getArrayElementType();
+      }
+      if (auto structType = dyn_cast<StructType>(global_type)) {
+        if (structType->isOpaque()) {
+          LOG_DEBUG("Encountered opaque struct " << global_type->getStructName() << " - skipping...");
+          return true;
+        }
+      }
+      return false;
+    };
+    llvm::erase_if(globals, RemoveGlobal);
 
     const auto beforeCallFilter = globals.size();
     NumFilteredGlobals          = NumDetectedGlobals - beforeCallFilter;
 
-    globals.erase(llvm::remove_if(globals, [&](const auto global) { return filter(global.global); }), globals.end());
+    llvm::erase_if(globals, [&](const auto global) { return filter(global.global); });
 
     NumCallFilteredGlobals = beforeCallFilter - globals.size();
     NumFilteredGlobals += NumCallFilteredGlobals;
@@ -270,8 +189,7 @@ bool MemInstFinderPass::runOnFunction(llvm::Function& function) {
     using namespace typeart::util::type;
     auto primaryBitcast = mallocData.primary;
     if (primaryBitcast != nullptr) {
-      const auto& bitcasts = mallocData.bitcasts;
-      std::for_each(bitcasts.begin(), bitcasts.end(), [&](auto bitcastInst) {
+      llvm::for_each(mallocData.bitcasts, [&](auto bitcastInst) {
         auto dest = bitcastInst->getDestTy();
         if (bitcastInst != primaryBitcast &&
             (!isVoidPtr(dest) && !isi64Ptr(dest) &&
@@ -289,23 +207,18 @@ bool MemInstFinderPass::runOnFunction(llvm::Function& function) {
   NumDetectedAllocs += mOpsCollector.allocas.size();
 
   if (config.filter.ClFilterNonArrayAlloca) {
-    auto& allocs = mOpsCollector.allocas;
-    allocs.erase(llvm::remove_if(allocs,
+    llvm::erase_if(mOpsCollector.allocas,
                                  [&](const auto& data) {
                                    if (!data.alloca->getAllocatedType()->isArrayTy() && data.array_size == 1) {
                                      ++NumFilteredNonArrayAllocs;
                                      return true;
                                    }
                                    return false;
-                                 }),
-                 allocs.end());
+                                 });
   }
 
   if (config.filter.ClFilterMallocAllocPair) {
-    auto& allocs  = mOpsCollector.allocas;
-    auto& mallocs = mOpsCollector.mallocs;
-
-    const auto filterMallocAllocPairing = [&mallocs](const auto alloc) {
+    const auto filterMallocAllocPairing = [&mallocs = mOpsCollector.mallocs](const auto alloc) {
       // Only look for the direct users of the alloc:
       // TODO is a deeper analysis required?
       for (auto inst : alloc->users()) {
@@ -314,32 +227,28 @@ bool MemInstFinderPass::runOnFunction(llvm::Function& function) {
           if (isa<BitCastInst>(source)) {
             for (auto& mdata : mallocs) {
               // is it a bitcast we already collected? if yes, we can filter the alloc
-              return std::any_of(mdata.bitcasts.begin(), mdata.bitcasts.end(),
-                                 [&source](const auto bcast) { return bcast == source; });
+              return llvm::is_contained(mdata.bitcasts, source);
             }
           } else if (isa<CallInst>(source)) {
-            return std::any_of(mallocs.begin(), mallocs.end(),
-                               [&source](const auto& mdata) { return mdata.call == source; });
+            return llvm::any_of(mallocs, [&source](const auto& mdata) { return mdata.call == source; });
           }
         }
       }
       return false;
     };
 
-    allocs.erase(llvm::remove_if(allocs,
+    llvm::erase_if(mOpsCollector.allocas,
                                  [&](const auto& data) {
                                    if (filterMallocAllocPairing(data.alloca)) {
                                      ++NumFilteredMallocAllocs;
                                      return true;
                                    }
                                    return false;
-                                 }),
-                 allocs.end());
+                                 });
   }
 
   if (config.filter.ClFilterPointerAlloca) {
-    auto& allocs = mOpsCollector.allocas;
-    allocs.erase(llvm::remove_if(allocs,
+    llvm::erase_if(mOpsCollector.allocas,
                                  [&](const auto& data) {
                                    auto alloca = data.alloca;
                                    if (!data.is_vla && isa<llvm::PointerType>(alloca->getAllocatedType())) {
@@ -347,21 +256,18 @@ bool MemInstFinderPass::runOnFunction(llvm::Function& function) {
                                      return true;
                                    }
                                    return false;
-                                 }),
-                 allocs.end());
+                                 });
   }
 
   if (config.filter.ClUseCallFilter) {
-    auto& allocs = mOpsCollector.allocas;
-    allocs.erase(llvm::remove_if(allocs,
+    llvm::erase_if(mOpsCollector.allocas,
                                  [&](const auto& data) {
                                    if (filter(data.alloca)) {
                                      ++NumCallFilteredAllocs;
                                      return true;
                                    }
                                    return false;
-                                 }),
-                 allocs.end());
+                                 });
     //    LOG_DEBUG(allocs.size() << " allocas to instrument : " << util::dump(allocs));
   }
 

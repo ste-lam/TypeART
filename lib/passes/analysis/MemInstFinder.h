@@ -26,7 +26,7 @@ class raw_ostream;
 
 namespace typeart::analysis {
 
-enum class FilterImplementation { none, standard, cg };
+enum class FilterImplementation { none, standard, cg, external };
 
 struct MemInstFinderConfig {
   struct Filter {
@@ -38,6 +38,7 @@ struct MemInstFinderConfig {
 
     // std::string ClCallFilterImpl{"default"};
     FilterImplementation implementation{FilterImplementation::standard};
+    std::string ClCallFilterPlugin{};
     std::string ClCallFilterGlob{"*MPI_*"};
     std::string ClCallFilterDeepGlob{"MPI_*"};
     std::string ClCallFilterCGFile{};

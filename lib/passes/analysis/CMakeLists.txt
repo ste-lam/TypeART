@@ -1,6 +1,8 @@
 set(MEM_PASS_SOURCES
   MemInstFinder.cpp
   MemOpVisitor.cpp
+  CallFilter.cpp
+  FilterPlugin.cpp
   ../support/TypeUtil.cpp
 )
 
