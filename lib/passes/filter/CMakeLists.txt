@@ -10,7 +10,7 @@ set(FILTER_SOURCES
   FilterUtil.cpp
   FilterUtil.h
   IRSearch.h
-)
+        )
 
 add_library(${TYPEART_PREFIX}_MemOpFilter STATIC ${FILTER_SOURCES})
 set_target_properties(

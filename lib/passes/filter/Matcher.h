@@ -16,7 +16,7 @@
 #include "../analysis/MemOpData.h"
 #include "../support/Util.h"
 
-#include "llvm/ADT/StringSet.h"
+#include "llvm/ADT/StringMap.h"
 
 namespace typeart::filter {
 
@@ -29,7 +29,7 @@ class Matcher {
   Matcher& operator=(const Matcher&) = default;
   Matcher& operator=(Matcher&&) = default;
 
-  virtual MatchResult match(const CallBase &, const Function &) const = 0;
+  [[nodiscard]] virtual MatchResult match(const llvm::CallBase &, const llvm::Function &) const = 0;
 
   virtual ~Matcher() = default;
 };
@@ -37,7 +37,7 @@ class Matcher {
 template<Matcher::MatchResult Result>
 class StaticMatcher final : public Matcher {
  public:
-  MatchResult match(const CallBase &Site, const Function &Callee) const override {
+  MatchResult match(const llvm::CallBase &Site, const llvm::Function &Callee) const override {
     assert(Site.isIndirectCall() || Site.getCalledFunction() == &Callee);
 
     return Result;
@@ -48,13 +48,13 @@ using NoMatcher = StaticMatcher<Matcher::MatchResult::NoMatch>;
 using AnyMatcher = StaticMatcher<Matcher::MatchResult::Match>;
 
 class DefaultStringMatcher final : public Matcher {
-  Regex matcher;
+  llvm::Regex matcher;
 
  public:
-  explicit DefaultStringMatcher(const std::string& regex) : matcher(regex, Regex::NoFlags) {
+  explicit DefaultStringMatcher(const std::string& regex) : matcher(regex, llvm::Regex::NoFlags) {
   }
 
-  MatchResult match(const CallBase &Site, const Function &Callee) const override {
+  MatchResult match(const llvm::CallBase &Site, const llvm::Function &Callee) const override {
     assert(Site.isIndirectCall() || Site.getCalledFunction() == &Callee);
 
     const auto f_name  = util::demangle(Callee.getName());
@@ -65,7 +65,7 @@ class DefaultStringMatcher final : public Matcher {
 
 class FunctionOracleMatcher final : public Matcher {
   const MemOps mem_operations{};
-  const StringMap<MatchResult> knownFunctions = {
+  const llvm::StringMap<MatchResult> knownFunctions = {
     {"sqrt", MatchResult::ShouldContinue},
     {"cos", MatchResult::ShouldContinue},
     {"sin", MatchResult::ShouldContinue},
@@ -91,11 +91,11 @@ class FunctionOracleMatcher final : public Matcher {
   };
 
  public:
-  MatchResult match(const CallBase &Site, const Function &Callee) const override {
+  MatchResult match(const llvm::CallBase &Site, const llvm::Function &Callee) const override {
     assert(Site.isIndirectCall() || Site.getCalledFunction() == &Callee);
 
     const auto f_name = util::demangle(Callee.getName());
-    StringRef f_name_ref{f_name};
+    llvm::StringRef f_name_ref{f_name};
 
     if (auto It = knownFunctions.find(f_name); It != knownFunctions.end()) {
       return It->second;
