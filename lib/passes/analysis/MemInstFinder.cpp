@@ -63,10 +63,12 @@ namespace typeart::analysis {
 class MemInstFinderPass : public MemInstFinder {
  private:
   MemOpVisitor mOpsCollector;
-  FilterBuilder filterBuilder;
   llvm::DenseMap<const llvm::Function*, FunctionData> functionMap;
   MemInstFinderConfig config;
+  FilterBuilder filterBuilder;
   CallFilter filter{filterBuilder()};
+
+  bool runOnFunction(llvm::Function& function);
 
  public:
   explicit MemInstFinderPass(const MemInstFinderConfig&);
@@ -77,16 +79,15 @@ class MemInstFinderPass : public MemInstFinder {
   void printStats(llvm::raw_ostream&) const override;
   // void configure(MemInstFinderConfig&) override;
   ~MemInstFinderPass() = default;
-
- private:
-  bool runOnFunction(llvm::Function& function);
 };
 
 MemInstFinderPass::MemInstFinderPass(const MemInstFinderConfig& config)
-    : mOpsCollector(config.collect_alloca, config.collect_heap), filterBuilder(config.filter), config(config) {
+    : mOpsCollector(config.collect_alloca, config.collect_heap), config(config), filterBuilder(config.filter) {
 }
 
 bool MemInstFinderPass::runOnModule(Module& module) {
+  filter.reset(module);
+
   mOpsCollector.collectGlobals(module);
   auto& globals = mOpsCollector.globals;
   NumDetectedGlobals += globals.size();

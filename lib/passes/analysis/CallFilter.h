@@ -49,6 +49,9 @@ class CallFilter {
 
   bool operator()(llvm::AllocaInst*);
   bool operator()(llvm::GlobalValue*);
+
+  /// workaround(?) for module reset, warmup, initialisation
+  void reset(llvm::Module &);
 };
 
 }  // namespace typeart::analysis

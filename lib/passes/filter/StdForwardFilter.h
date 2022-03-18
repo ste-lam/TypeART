@@ -35,6 +35,7 @@ struct DefaultSearch;
 namespace typeart::filter {
 
 struct StdFilterTrait {
+  constexpr static bool Reset       = false;
   constexpr static bool Callees     = false;
   constexpr static bool Indirect    = false;
   constexpr static bool Intrinsic   = false;

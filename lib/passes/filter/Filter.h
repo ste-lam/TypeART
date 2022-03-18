@@ -16,6 +16,7 @@
 namespace llvm {
 class Value;
 class Function;
+class Module;
 }  // namespace llvm
 
 namespace typeart::filter {
@@ -27,22 +28,24 @@ class Filter {
   Filter(Filter&&)      = default;
   Filter& operator=(const Filter&) = default;
   Filter& operator=(Filter&&) = default;
+  virtual ~Filter() = default;
 
+  virtual void reset(llvm::Module &)                = 0;
   virtual bool filter(llvm::Value*)                 = 0;
   virtual void setStartingFunction(llvm::Function*) = 0;
   virtual void setMode(bool)                        = 0;
-
-  virtual ~Filter() = default;
 };
 
 class NoOpFilter final : public Filter {
  public:
+  void reset(llvm::Module& Module) override {
+  }
   bool filter(llvm::Value*) override {
     return false;
   }
-  void setMode(bool) override {
-  }
   void setStartingFunction(llvm::Function*) override {
+  }
+  void setMode(bool) override {
   }
 };
 

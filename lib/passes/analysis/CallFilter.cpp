@@ -104,5 +104,11 @@ bool CallFilter::operator()(llvm::GlobalValue* g) {
   return filter_;
 }
 
+
+void CallFilter::reset(llvm::Module& M) {
+  LOG_DEBUG("Reset to module: " << M.getName() << "\n");
+  fImpl->reset(M);
+}
+
 }
 // namespace typeart::analysis

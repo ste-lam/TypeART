@@ -78,6 +78,12 @@ class BaseFilter : public Filter {
   explicit BaseFilter(Args&&... args) : handler(std::forward<Args>(args)...) {
   }
 
+  void reset(Module& Module) override {
+    if constexpr (CallSiteHandler::Support::Reset) {
+      return handler.reset(Module);
+    }
+  }
+
   bool filter(llvm::Value* in) override {
     if (in == nullptr) {
       LOG_WARNING("Called with nullptr");
