@@ -11,14 +11,11 @@
 //
 
 #include "MemInstFinder.h"
-#include "FilterPlugin.h"
 
+#include "CallFilter.h"
 #include "MemOpVisitor.h"
 #include "analysis/MemOpData.h"
-#include "filter/CGForwardFilter.h"
 #include "filter/CGInterface.h"
-#include "filter/Filter.h"
-#include "filter/Matcher.h"
 #include "filter/StdForwardFilter.h"
 #include "support/Logger.h"
 #include "support/Table.h"
@@ -28,7 +25,6 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalValue.h"
@@ -37,11 +33,8 @@
 #include "llvm/IR/Type.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
-#include "CallFilter.h"
 
-#include <algorithm>
 #include <sstream>
-#include <utility>
 
 using namespace llvm;
 

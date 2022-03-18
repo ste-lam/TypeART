@@ -13,23 +13,39 @@
 #ifndef TYPEART_LIB_PASSES_ANALYSIS_CALLFILTER_H
 #define TYPEART_LIB_PASSES_ANALYSIS_CALLFILTER_H
 
-#include "Filter.h"
-#include "FilterPlugin.h"
-#include "MemInstFinder.h"
+#include "../filter/Filter.h"
 
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/PassManager.h>
 #include <memory>
 
 namespace typeart::analysis {
+
+enum class FilterImplementation { none, standard, cg, external };
+
+struct FilterConfig {
+  bool ClFilterNonArrayAlloca{false};
+  bool ClFilterMallocAllocPair{false};
+  bool ClFilterGlobal{true};
+  bool ClUseCallFilter{false};
+  bool ClFilterPointerAlloca{false};
+
+  // std::string ClCallFilterImpl{"default"};
+  FilterImplementation implementation{FilterImplementation::standard};
+  std::string ClCallFilterPlugin{};
+  std::string ClCallFilterGlob{"*MPI_*"};
+  std::string ClCallFilterDeepGlob{"MPI_*"};
+  std::string ClCallFilterCGFile{};
+};
+
 class FilterBuilder {
-  using CallT = std::function<std::unique_ptr<typeart::filter::Filter>(const MemInstFinderConfig::Filter &)>;
+  using CallT = std::function<std::unique_ptr<typeart::filter::Filter>(const FilterConfig &)>;
 
   llvm::SmallVector<CallT, 2> builderCallbacks;
-  const MemInstFinderConfig::Filter &config;
+  const FilterConfig &config;
 
  public:
-  explicit FilterBuilder(const MemInstFinderConfig::Filter &);
+  explicit FilterBuilder(const FilterConfig &);
 
   void registerBuilderCallback(const CallT &);
 

@@ -10,11 +10,11 @@
 // SPDX-License-Identifier: BSD-3-Clause
 //
 
+#include "FilterPlugin.h"
 #include "CallFilter.h"
 #include "Matcher.h"
 #include "StdForwardFilter.h"
 #include "CGForwardFilter.h"
-#include "FilterPlugin.h"
 
 namespace typeart::analysis {
 
@@ -57,8 +57,8 @@ std::unique_ptr<typeart::filter::Filter> FilterBuilder::operator()() {
   }
 }
 
-FilterBuilder::FilterBuilder(const MemInstFinderConfig::Filter& Config) : config(Config) {
-  FilterBuilder::registerBuilderCallback([](const MemInstFinderConfig::Filter&) {
+FilterBuilder::FilterBuilder(const FilterConfig &Config) : config(Config) {
+  FilterBuilder::registerBuilderCallback([](const FilterConfig &) {
     LOG_DEBUG("Return no-op filter")
     return std::make_unique<filter::NoOpFilter>();
   });
@@ -67,6 +67,8 @@ FilterBuilder::FilterBuilder(const MemInstFinderConfig::Filter& Config) : config
     auto Plugin = FilterPlugin::load(Filename);
     if (Plugin) {
       Plugin->registerBuilderCallbacks(*this);
+    } else {
+      LOG_ERROR(toString(Plugin.takeError()))
     }
   }
 }

@@ -1,17 +1,3 @@
-#ifndef TYPEART_LIB_PASSES_ANALYSIS_FILTERPLUGIN_H
-#define TYPEART_LIB_PASSES_ANALYSIS_FILTERPLUGIN_H
-
-#include <llvm/ADT/StringRef.h>
-#include <llvm/Support/Compiler.h>
-#include <llvm/Support/DynamicLibrary.h>
-#include <llvm/Support/Error.h>
-#include <string>
-#include <utility>
-
-
-namespace typeart::analysis {
-  class FilterBuilder;
-};
 // TypeART library
 //
 // Copyright (c) 2017-2022 TypeART Authors
@@ -24,7 +10,21 @@ namespace typeart::analysis {
 // SPDX-License-Identifier: BSD-3-Clause
 //
 
+#ifndef TYPEART_LIB_PASSES_ANALYSIS_FILTERPLUGIN_H
+#define TYPEART_LIB_PASSES_ANALYSIS_FILTERPLUGIN_H
+
+#include <llvm/ADT/StringRef.h>
+#include <llvm/Support/Compiler.h>
+#include <llvm/Support/DynamicLibrary.h>
+#include <llvm/Support/Error.h>
+#include <string>
+#include <utility>
+
+
 namespace typeart {
+  namespace analysis {
+    class FilterBuilder;
+  };
 
 /// based on LLVMs pass plugin loader
 
@@ -97,6 +97,8 @@ class FilterPlugin {
   const FilterPluginLibraryInfo Info;
 };
 }  // namespace typeart
+
+
 /// The public entry point for a filter plugin.
 ///
 /// When a plugin is loaded by the driver, it will call this entry point to
@@ -104,13 +106,13 @@ class FilterPlugin {
 /// This function needs to be implemented by the plugin, see the example below:
 ///
 /// ```
-/// extern "C"  ::typeart::FilterPlugin LLVM_ATTRIBUTE_WEAK
+/// extern "C"  ::typeart::FilterPluginLibraryInfo LLVM_ATTRIBUTE_UNUSED LLVM_ATTRIBUTE_WEAK
 /// typeartGetFilterPluginInfo() {
 ///   return {
 ///     TYPEART_PLUGIN_API_VERSION, "MyPlugin", "v0.1", [](::typeart::analysis::FilterBuilder &FB) { ... }
 ///   };
 /// }
 /// ```
-extern "C" ::typeart::FilterPluginLibraryInfo LLVM_ATTRIBUTE_WEAK typeartGetFilterPluginInfo();
+extern "C" ::typeart::FilterPluginLibraryInfo LLVM_ATTRIBUTE_UNUSED LLVM_ATTRIBUTE_WEAK typeartGetFilterPluginInfo();
 
 #endif  // TYPEART_LIB_PASSES_ANALYSIS_FILTERPLUGIN_H
