@@ -13,7 +13,6 @@
 #ifndef TYPEART_FILTER_OMPUTIL_H
 #define TYPEART_FILTER_OMPUTIL_H
 
-#include "compat/CallSite.h"
 #include "support/DefUseChain.h"
 #include "support/OmpUtil.h"
 
@@ -31,7 +30,7 @@ struct EmptyContext {
 struct OmpContext {
   constexpr static bool WithOmp = true;
 
-  static bool isOmpExecutor(const llvm::CallSite& c) {
+  static bool isOmpExecutor(const llvm::CallBase& c) {
     const auto called = c.getCalledFunction();
     if (called != nullptr) {
       // TODO probably not complete (openmp task?, see isOmpTask*())
@@ -40,7 +39,7 @@ struct OmpContext {
     return false;
   }
 
-  static bool isOmpTaskAlloc(const llvm::CallSite& c) {
+  static bool isOmpTaskAlloc(const llvm::CallBase& c) {
     const auto called = c.getCalledFunction();
     if (called != nullptr) {
       return called->getName().startswith("__kmpc_omp_task_alloc");
@@ -48,7 +47,7 @@ struct OmpContext {
     return false;
   }
 
-  static bool isOmpTaskCall(const llvm::CallSite& c) {
+  static bool isOmpTaskCall(const llvm::CallBase& c) {
     const auto called = c.getCalledFunction();
     if (called != nullptr) {
       return called->getName().endswith("__kmpc_omp_task");
@@ -56,7 +55,7 @@ struct OmpContext {
     return false;
   }
 
-  static bool isOmpTaskRelated(const llvm::CallSite& c) {
+  static bool isOmpTaskRelated(const llvm::CallBase& c) {
     const auto called = c.getCalledFunction();
     if (called != nullptr) {
       return called->getName().startswith("__kmpc_omp_task");
@@ -64,7 +63,7 @@ struct OmpContext {
     return false;
   }
 
-  static bool isOmpHelper(const llvm::CallSite& c) {
+  static bool isOmpHelper(const llvm::CallBase& c) {
     const auto is_execute = isOmpExecutor(c);
     if (!is_execute) {
       const auto called = c.getCalledFunction();
@@ -77,7 +76,7 @@ struct OmpContext {
     return false;
   }
 
-  static llvm::Optional<llvm::Function*> getMicrotask(const llvm::CallSite& c) {
+  static llvm::Optional<llvm::Function*> getMicrotask(const llvm::CallBase& c) {
     using namespace llvm;
     if (isOmpExecutor(c)) {
       auto f = llvm::dyn_cast<llvm::Function>(c.getArgOperand(2)->stripPointerCasts());
@@ -90,7 +89,7 @@ struct OmpContext {
     return llvm::None;
   }
 
-  static bool canDiscardMicrotaskArg(llvm::CallSite c, const Path& path) {
+  static bool canDiscardMicrotaskArg(const llvm::CallBase &c, const Path& path) {
     using namespace llvm;
     auto arg = path.getEndPrev();
     if (!arg) {
@@ -137,8 +136,8 @@ struct OmpContext {
           return val->users();
         },
         [&found](auto value) {
-          llvm::CallSite site(value);
-          if (site.isCall() || site.isInvoke()) {
+          if (llvm::isa<llvm::CallInst,llvm::InvokeInst>(value)) {
+            const auto &site = *llvm::cast<llvm::CallBase>(value);
             const auto called = site.getCalledFunction();
             if (called != nullptr && called->getName().startswith("__kmpc_omp_task(")) {
               found = true;
@@ -165,8 +164,8 @@ struct OmpContext {
         }
         // else find task_alloc, and correlate with store (arg "v") to result of task_alloc
         auto calls = util::find_all(f, [&](auto& inst) {
-          llvm::CallSite s(&inst);
-          if (s.isCall() || s.isInvoke()) {
+          if (llvm::isa<llvm::CallInst,llvm::InvokeInst>(inst)) {
+            const auto &s = llvm::cast<llvm::CallBase>(inst);
             if (auto f = s.getCalledFunction()) {
               // once true, the find_all should cancel
               return f->getName().startswith("__kmpc_omp_task_alloc");
@@ -196,7 +195,7 @@ struct OmpContext {
   }
 
   template <typename Distance>
-  static Distance getArgOffsetToMicrotask(const llvm::CallSite& c, Distance d) {
+  static Distance getArgOffsetToMicrotask(const llvm::CallBase& c, Distance d) {
     if (d < 1) {
       LOG_WARNING("OMP offset should be > 2 for non-omp-internal args to outlined region")
       return d;

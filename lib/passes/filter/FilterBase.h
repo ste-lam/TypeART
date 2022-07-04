@@ -18,9 +18,7 @@
 #include "IRPath.h"
 #include "IRSearch.h"
 #include "OmpUtil.h"
-#include "compat/CallSite.h"
 #include "support/Logger.h"
-#include "support/OmpUtil.h"
 #include "support/Util.h"
 
 #include "llvm/IR/Instructions.h"
@@ -72,8 +70,8 @@ class BaseFilter : public Filter {
     start_f = f;
   };
 
-  void setMode(bool m) override {
-    malloc_mode = m;
+  void setMode(bool SearchMallocs) override {
+    malloc_mode = SearchMallocs;
   };
 
  private:
@@ -115,16 +113,17 @@ class BaseFilter : public Filter {
 
     for (auto& path2def : defPath) {
       auto csite = path2def.getEnd();
-      if (!csite) {
+      if (!csite || !isa<CallInst, InvokeInst>(csite.getValue())) {
         continue;
       }
+      const auto &c = *cast<CallBase>(csite.getValue());
 
-      llvm::CallSite c(csite.getValue());
       if (fpath.contains(c)) {
         // Avoid recursion:
         // TODO a continue may be wrong, if the function itself eventually calls "MPI"?
         continue;
       }
+
 
       // TODO: here we have a definition OR a omp call, e.g., @__kmpc_fork_call
       LOG_DEBUG("Looking at: " << c.getCalledFunction()->getName());
@@ -224,8 +223,9 @@ class BaseFilter : public Filter {
   }
 
   FilterAnalysis callsite(llvm::Value* val, const Path& path) {
-    CallSite site(val);
-    if (site.isCall() || site.isInvoke()) {
+    if (isa<CallInst, InvokeInst>(val) ) {
+      const auto &site = *cast<CallBase>(val);
+
       const auto callee        = site.getCalledFunction();
       const bool indirect_call = callee == nullptr;
 

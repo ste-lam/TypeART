@@ -15,7 +15,6 @@
 
 #include "IRPath.h"
 #include "OmpUtil.h"
-#include "compat/CallSite.h"
 #include "support/DefUseChain.h"
 #include "support/Logger.h"
 
@@ -49,7 +48,7 @@ namespace typeart::filter {
 
 struct FunctionAnalysis {
   using FunctionCounts = struct { int decl, def, intrinsic, indirect; };
-  using FunctionCalls  = struct { llvm::SmallVector<CallSite, 8> decl, def, intrinsic, indirect; };
+  using FunctionCalls  = struct { llvm::SmallVector<llvm::CallBase*, 8> decl, def, intrinsic, indirect; };
 
   FunctionCalls calls;
 
@@ -71,7 +70,7 @@ enum class ArgCorrelation {
 };
 
 template<typename OmpHelper>
-inline std::pair<llvm::Argument*, int> findArg(CallSite c, const Path& p) {
+inline std::pair<llvm::Argument*, int> findArg(const CallBase &c, const Path& p) {
   auto arg = p.getEndPrev();
   if (!arg) {
     return {nullptr, -1};
@@ -103,7 +102,7 @@ inline std::pair<llvm::Argument*, int> findArg(CallSite c, const Path& p) {
 }
 
 template<typename OmpHelper = omp::OmpContext>
-inline std::vector<llvm::Argument*> args(CallSite c, const Path& p) {
+inline std::vector<llvm::Argument*> args(const CallBase &c, const Path& p) {
   if (c.isIndirectCall()) {
     return {};
   }
@@ -120,7 +119,7 @@ inline std::vector<llvm::Argument*> args(CallSite c, const Path& p) {
 
 namespace detail {
 template <typename OmpHelper, typename TypeID>
-ArgCorrelation correlate(CallSite c, const Path& p, TypeID&& isType) {
+ArgCorrelation correlate(const CallBase &c, const Path& p, TypeID&& isType) {
   auto [arg, _] = findArg<OmpHelper>(c, p);
 
   if (!arg) {
@@ -145,13 +144,13 @@ ArgCorrelation correlate(CallSite c, const Path& p, TypeID&& isType) {
 
 
 template<typename OmpHelper = omp::OmpContext>
-inline ArgCorrelation correlate2void(CallSite c, const Path& p) {
+inline ArgCorrelation correlate2void(const CallBase &c, const Path& p) {
   return detail::correlate<OmpHelper>(
       c, p, [](llvm::Type* type) { return type->isPointerTy() && type->getPointerElementType()->isIntegerTy(8); });
 }
 
 template<typename OmpHelper = omp::OmpContext>
-inline ArgCorrelation correlate2pointer(CallSite c, const Path& p) {
+inline ArgCorrelation correlate2pointer(const CallBase &c, const Path& p) {
   // weaker predicate than void pointer, but more generally applicable
   return detail::correlate<OmpHelper>(c, p, [](llvm::Type* type) { return type->isPointerTy(); });
 }

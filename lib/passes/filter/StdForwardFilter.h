@@ -15,7 +15,6 @@
 
 #include "FilterBase.h"
 #include "Matcher.h"
-#include "compat/CallSite.h"
 #include "filter/IRPath.h"
 
 #include <memory>
@@ -55,9 +54,9 @@ struct ForwardFilterImpl {
 
   FilterAnalysis precheck(Value* in, Function* start, const FPath&);
 
-  FilterAnalysis decl(CallSite current, const Path& p) const;
+  FilterAnalysis decl(const CallBase &current, const Path& p) const;
 
-  FilterAnalysis def(CallSite current, const Path& p) const;
+  FilterAnalysis def(const CallBase &current, const Path& p) const;
 };
 
 using StandardForwardFilter = BaseFilter<ForwardFilterImpl, DefaultSearch, omp::OmpContext>;

@@ -15,7 +15,6 @@
 
 #include "FilterBase.h"
 #include "Matcher.h"
-#include "compat/CallSite.h"
 #include "filter/CGInterface.h"
 #include "filter/IRPath.h"
 
@@ -61,9 +60,9 @@ struct CGFilterImpl {
 
   FilterAnalysis precheck(Value* in, Function* start, const FPath&);
 
-  FilterAnalysis decl(CallSite current, const Path& p);
+  FilterAnalysis decl(const CallBase &current, const Path& p);
 
-  FilterAnalysis def(CallSite current, const Path& p);
+  FilterAnalysis def(const CallBase &current, const Path& p);
 };
 
 using CGForwardFilter = BaseFilter<CGFilterImpl, DefaultSearch, omp::OmpContext>;

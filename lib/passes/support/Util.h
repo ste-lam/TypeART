@@ -15,8 +15,7 @@
 
 //#include "Logger.h"
 
-#include "compat/CallSite.h"
-
+#include "llvm/IR/Instructions.h"
 #include "llvm/Demangle/Demangle.h"
 #include "llvm/Support/Regex.h"
 #include "llvm/Support/raw_ostream.h"
@@ -94,18 +93,18 @@ inline std::string demangle(String&& s) {
 
 template <typename T>
 inline std::string try_demangle(const T& site) {
-  if constexpr (std::is_same_v<T, llvm::CallSite>) {
-    if (site.isIndirectCall()) {
-      return "";
-    }
-    return demangle(site.getCalledFunction()->getName());
+  if constexpr (std::is_same_v<T, llvm::Function>) {
+    return demangle(site.getName());
   } else {
-    if constexpr (std::is_same_v<T, llvm::Function>) {
-      return demangle(site.getName());
-    } else {
-      return demangle(site);
-    }
+    return demangle(site);
   }
+}
+
+inline std::string try_demangle(const llvm::CallBase& site) {
+  if (site.isIndirectCall()) {
+    return "";
+  }
+  return demangle(site.getCalledFunction()->getName());
 }
 
 template <typename Predicate>

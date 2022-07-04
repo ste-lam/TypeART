@@ -73,7 +73,7 @@ FilterAnalysis CGFilterImpl::precheck(Value* in, Function* start, const FPath& f
   }
 
   const auto has_omp_task =
-      llvm::any_of(analysis.calls.decl, [](const auto& csite) { return omp::OmpContext::isOmpTaskRelated(csite); });
+      llvm::any_of(analysis.calls.decl, [](const auto& csite) { return omp::OmpContext::isOmpTaskRelated(*csite); });
   if (has_omp_task) {
     // FIXME we cannot handle complex data flow of tasks at this point, hence, this check
     LOG_DEBUG("Keep value " << *in << ". Detected omp task call.");
@@ -83,7 +83,7 @@ FilterAnalysis CGFilterImpl::precheck(Value* in, Function* start, const FPath& f
   return FilterAnalysis::Continue;
 }
 
-FilterAnalysis CGFilterImpl::decl(CallSite current, const Path& p) {
+FilterAnalysis CGFilterImpl::decl(const CallBase &current, const Path& p) {
   if (deep_matcher && deep_matcher->match(current) == Matcher::MatchResult::Match) {
     auto result = correlate2void(current, p);
     switch (result) {
@@ -118,7 +118,7 @@ FilterAnalysis CGFilterImpl::decl(CallSite current, const Path& p) {
   }
 }
 
-FilterAnalysis CGFilterImpl::def(CallSite current, const Path& p) {
+FilterAnalysis CGFilterImpl::def(const CallBase &current, const Path& p) {
   return decl(current, p);
 }
 

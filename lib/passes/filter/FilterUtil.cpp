@@ -12,8 +12,6 @@
 
 #include "FilterUtil.h"
 
-#include "compat/CallSite.h"
-
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -35,34 +33,38 @@ FunctionAnalysis::FunctionCounts FunctionAnalysis::analyze(Function* f) {
 
   for (auto& BB : *f) {
     for (auto& I : BB) {
-      CallSite site(&I);
-      if (site.isCall() || site.isInvoke()) {
-        const auto callee        = site.getCalledFunction();
-        const bool indirect_call = callee == nullptr;
+      if (!isa<CallInst, InvokeInst>(I)) {
+        continue;
+      }
+      auto &site = cast<CallBase>(I);
 
-        if (indirect_call) {
-          ++count.indirect;
-          calls.indirect.push_back(site);
-          continue;
-        }
+      const auto callee        = site.getCalledFunction();
+      const bool indirect_call = callee == nullptr;
 
-        const bool is_decl      = callee->isDeclaration();
-        const bool is_intrinsic = site.getIntrinsicID() != Intrinsic::not_intrinsic;
+      if (indirect_call) {
+        ++count.indirect;
+        calls.indirect.push_back(&site);
+        continue;
+      }
 
-        if (is_intrinsic) {
-          ++count.intrinsic;
-          calls.intrinsic.push_back(site);
-          continue;
-        }
+      const bool is_decl      = callee->isDeclaration();
+      const bool is_intrinsic = site.getIntrinsicID() != Intrinsic::not_intrinsic;
 
-        if (is_decl) {
-          ++count.decl;
-          calls.decl.push_back(site);
-          continue;
-        }
+      if (is_intrinsic) {
+        ++count.intrinsic;
+        calls.intrinsic.push_back(&site);
+        continue;
+      }
 
+      if (is_decl) {
+        ++count.decl;
+        calls.decl.push_back(&site);
+        continue;
+      }
+
+      {
         ++count.def;
-        calls.def.push_back(site);
+        calls.def.push_back(&site);
         continue;
       }
     }

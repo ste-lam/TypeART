@@ -13,12 +13,9 @@
 #ifndef TYPEART_IRPATH_H
 #define TYPEART_IRPATH_H
 
-#include "compat/CallSite.h"
-
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/IR/Function.h"
-#include "llvm/IR/Value.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <unordered_map>
@@ -171,8 +168,13 @@ struct CallsitePath {
         intermediatePath.emplace_back(f, p);
         return;
       }
-      llvm::CallSite c(csite.getValue());
-      intermediatePath.emplace_back(c.getCalledFunction(), p);
+
+      if (const auto &CB = llvm::dyn_cast<llvm::CallBase>(csite.getValue())) {
+        intermediatePath.emplace_back(CB->getCalledFunction(), p);
+        return;
+      }
+
+      intermediatePath.emplace_back(nullptr, p);
     }
   }
 
@@ -186,7 +188,8 @@ struct CallsitePath {
     }
   }
 
-  bool contains(llvm::CallSite c) {
+
+  bool contains(const llvm::CallBase &c) {
     llvm::Function* f = c.getCalledFunction();
     if ((f != nullptr) && f == start) {
       return true;

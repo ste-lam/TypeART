@@ -15,9 +15,9 @@
 
 #include "../analysis/MemOpData.h"
 #include "../support/Util.h"
-#include "compat/CallSite.h"
 
 #include "llvm/ADT/StringSet.h"
+#include "llvm/Support/Regex.h"
 
 namespace typeart::filter {
 
@@ -30,26 +30,26 @@ class Matcher {
   Matcher& operator=(const Matcher&) = default;
   Matcher& operator=(Matcher&&) = default;
 
-  virtual MatchResult match(llvm::CallSite) const = 0;
+  virtual MatchResult match(const llvm::CallBase &) const = 0;
 
-  virtual ~Matcher() = default;
+virtual ~Matcher() = default;
 };
 
 class NoMatcher final : public Matcher {
  public:
-  MatchResult match(llvm::CallSite) const {
+  MatchResult match(const llvm::CallBase &) const override {
     return MatchResult::NoMatch;
   };
 };
 
 class DefaultStringMatcher final : public Matcher {
-  Regex matcher;
+  llvm::Regex matcher;
 
  public:
-  explicit DefaultStringMatcher(const std::string& regex) : matcher(regex, Regex::NoFlags) {
+  explicit DefaultStringMatcher(const std::string& regex) : matcher(regex, llvm::Regex::NoFlags) {
   }
 
-  MatchResult match(llvm::CallSite c) const override {
+  MatchResult match(const llvm::CallBase &c) const override {
     const auto f = c.getCalledFunction();
     if (f != nullptr) {
       const auto f_name  = util::demangle(f->getName());
@@ -71,11 +71,11 @@ class FunctionOracleMatcher final : public Matcher {
                                                 {"scanf"},  {"strtol"},       {"srand"}};
 
  public:
-  MatchResult match(llvm::CallSite c) const override {
+  MatchResult match(const llvm::CallBase &c) const override {
     const auto f = c.getCalledFunction();
     if (f != nullptr) {
       const auto f_name = util::demangle(f->getName());
-      StringRef f_name_ref{f_name};
+      llvm::StringRef f_name_ref{f_name};
       if (continue_set.count(f_name) > 0) {
         return MatchResult::ShouldContinue;
       }
