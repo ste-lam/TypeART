@@ -1,0 +1,22 @@
+; clang-format off
+; RUN: cat %s | %apply-typeart -typeart-stack -typeart-call-filter -S 2>&1 | %filecheck %s
+; clang-format on
+
+declare dso_local void @MPI_sink(i8*)
+
+define dso_local void @foo() {
+  %1 = alloca [5 x i32], align 16
+  %a = alloca i64, align 8
+  store i64 3, i64* %a, align 8
+  %2 = bitcast [5 x i32]* %1 to i8*
+  %3 = load i64, i64* %a, align 8
+  %4 = getelementptr inbounds [5 x i32], [5 x i32]* %1, i64 0, i64 %3
+  %5 = bitcast i32* %4 to i8*
+  call void @MPI_sink(i8* %5)
+  ret void
+}
+
+
+; CHECK: > Stack Memory
+; CHECK-NEXT: Alloca                 :  2.00
+; CHECK-NEXT: Stack call filtered %  : 50.00
