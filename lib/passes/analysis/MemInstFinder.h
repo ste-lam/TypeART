@@ -14,6 +14,7 @@
 #define TYPEART_MEMINSTFINDER_H
 
 #include "MemOpData.h"
+#include "CallFilter.h"
 
 #include <memory>
 #include <string>
@@ -26,26 +27,13 @@ class raw_ostream;
 
 namespace typeart::analysis {
 
-enum class FilterImplementation { none, standard, cg };
-
 struct MemInstFinderConfig {
-  struct Filter {
-    bool ClFilterNonArrayAlloca{false};
-    bool ClFilterMallocAllocPair{false};
-    bool ClFilterGlobal{true};
-    bool ClUseCallFilter{false};
-    bool ClFilterPointerAlloca{false};
-
-    // std::string ClCallFilterImpl{"default"};
-    FilterImplementation implementation{FilterImplementation::standard};
-    std::string ClCallFilterGlob{"*MPI_*"};
-    std::string ClCallFilterDeepGlob{"MPI_*"};
-    std::string ClCallFilterCGFile{};
-  };
+  using Filter = FilterConfig;
 
   bool collect_heap{false};
   bool collect_alloca{false};
   bool collect_global{false};
+
   Filter filter;
 };
 

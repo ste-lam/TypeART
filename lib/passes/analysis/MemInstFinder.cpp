@@ -11,13 +11,11 @@
 //
 
 #include "MemInstFinder.h"
-
+#include "CallFilter.h"
 #include "MemOpVisitor.h"
+
 #include "analysis/MemOpData.h"
-#include "filter/CGForwardFilter.h"
 #include "filter/CGInterface.h"
-#include "filter/Filter.h"
-#include "filter/Matcher.h"
 #include "filter/StdForwardFilter.h"
 #include "support/Logger.h"
 #include "support/Table.h"
@@ -58,92 +56,11 @@ ALWAYS_ENABLED_STATISTIC(NumCallFilteredGlobals, "Number of filtered globals");
 
 namespace typeart::analysis {
 
-namespace filter {
-class CallFilter {
-  std::unique_ptr<typeart::filter::Filter> fImpl;
-
- public:
-  explicit CallFilter(const MemInstFinderConfig& config);
-  CallFilter(const CallFilter&) = delete;
-  CallFilter(CallFilter&&)      = default;
-  bool operator()(llvm::AllocaInst*);
-  bool operator()(llvm::GlobalValue*);
-  CallFilter& operator=(CallFilter&&) noexcept;
-  CallFilter& operator=(const CallFilter&) = delete;
-  virtual ~CallFilter();
-};
-
-}  // namespace filter
-
-namespace filter {
-
-namespace detail {
-static std::unique_ptr<typeart::filter::Filter> make_filter(const MemInstFinderConfig& config) {
-  using namespace typeart::filter;
-  const auto filter_id   = config.filter.implementation;
-  const std::string glob = config.filter.ClCallFilterGlob;
-
-  if (filter_id == FilterImplementation::none || !config.filter.ClUseCallFilter) {
-    LOG_DEBUG("Return no-op filter")
-    return std::make_unique<NoOpFilter>();
-  } else if (filter_id == FilterImplementation::cg) {
-    if (config.filter.ClCallFilterCGFile.empty()) {
-      LOG_FATAL("CG File not set!");
-      std::exit(1);
-    }
-    LOG_DEBUG("Return CG filter with CG file @ " << config.filter.ClCallFilterCGFile)
-    auto json_cg = JSONCG::getJSON(config.filter.ClCallFilterCGFile);
-    auto matcher = std::make_unique<DefaultStringMatcher>(util::glob2regex(glob));
-    return std::make_unique<CGForwardFilter>(glob, std::move(json_cg), std::move(matcher));
-  } else {
-    LOG_DEBUG("Return default filter")
-    auto matcher         = std::make_unique<DefaultStringMatcher>(util::glob2regex(glob));
-    const auto deep_glob = config.filter.ClCallFilterDeepGlob;
-    auto deep_matcher    = std::make_unique<DefaultStringMatcher>(util::glob2regex(deep_glob));
-    return std::make_unique<StandardForwardFilter>(std::move(matcher), std::move(deep_matcher));
-  }
-}
-}  // namespace detail
-
-CallFilter::CallFilter(const MemInstFinderConfig& config) : fImpl{detail::make_filter(config)} {
-}
-
-bool CallFilter::operator()(AllocaInst* in) {
-  LOG_DEBUG("Analyzing value: " << util::dump(*in));
-  fImpl->setMode(/*search mallocs = */ false);
-  fImpl->setStartingFunction(in->getParent()->getParent());
-  const auto filter_ = fImpl->filter(in);
-  if (filter_) {
-    LOG_DEBUG("Filtering value: " << util::dump(*in) << "\n");
-  } else {
-    LOG_DEBUG("Keeping value: " << util::dump(*in) << "\n");
-  }
-  return filter_;
-}
-
-bool CallFilter::operator()(GlobalValue* g) {
-  LOG_DEBUG("Analyzing value: " << util::dump(*g));
-  fImpl->setMode(/*search mallocs = */ false);
-  fImpl->setStartingFunction(nullptr);
-  const auto filter_ = fImpl->filter(g);
-  if (filter_) {
-    LOG_DEBUG("Filtering value: " << util::dump(*g) << "\n");
-  } else {
-    LOG_DEBUG("Keeping value: " << util::dump(*g) << "\n");
-  }
-  return filter_;
-}
-
-CallFilter& CallFilter::operator=(CallFilter&&) noexcept = default;
-
-CallFilter::~CallFilter() = default;
-
-}  // namespace filter
 
 class MemInstFinderPass : public MemInstFinder {
  private:
   MemOpVisitor mOpsCollector;
-  filter::CallFilter filter;
+  CallFilter filter;
   llvm::DenseMap<const llvm::Function*, FunctionData> functionMap;
   MemInstFinderConfig config;
 
@@ -162,7 +79,7 @@ class MemInstFinderPass : public MemInstFinder {
 };
 
 MemInstFinderPass::MemInstFinderPass(const MemInstFinderConfig& config)
-    : mOpsCollector(config.collect_alloca, config.collect_heap), filter(config), config(config) {
+    : mOpsCollector(config.collect_alloca, config.collect_heap), filter(FilterBuilder(config.filter)()), config(config) {
 }
 
 bool MemInstFinderPass::runOnModule(Module& module) {

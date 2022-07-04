@@ -1,6 +1,7 @@
 set(MEM_PASS_SOURCES
   MemInstFinder.cpp
   MemOpVisitor.cpp
+  CallFilter.cpp
   ../support/TypeUtil.cpp
 )
 
@@ -40,3 +41,7 @@ make_tidy_check(${TYPEART_PREFIX}_MemInstFinder "${MEM_PASS_SOURCES}")
 typeart_target_compile_options(${TYPEART_PREFIX}_MemInstFinder)
 typeart_target_define_file_basename(${TYPEART_PREFIX}_MemInstFinder)
 typeart_target_coverage_options(${TYPEART_PREFIX}_MemInstFinder)
+
+install(FILES CallFilter.h
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME}/analysis
+        )

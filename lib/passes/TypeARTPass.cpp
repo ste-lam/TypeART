@@ -97,12 +97,35 @@ static cl::opt<bool> cl_typeart_call_filter(
     cl::init(false), cl::cat(typeart_meminstfinder_category));
 
 static cl::opt<typeart::analysis::FilterImplementation> cl_typeart_call_filter_implementation(
-    "typeart-call-filter-impl", cl::desc("Select the call filter implementation."),
-    cl::values(clEnumValN(typeart::analysis::FilterImplementation::none, "none", "No filter"),
-               clEnumValN(typeart::analysis::FilterImplementation::standard, "std",
-                          "Standard forward filter (default)"),
-               clEnumValN(typeart::analysis::FilterImplementation::cg, "cg", "Call-graph-based filter")),
-    cl::Hidden, cl::init(typeart::analysis::FilterImplementation::standard), cl::cat(typeart_meminstfinder_category));
+    "typeart-call-filter-impl",
+    cl::desc("Select the call filter implementation."),
+    cl::values(
+        clEnumValN(typeart::analysis::FilterImplementation::none, "none", "No filter"),
+        clEnumValN(typeart::analysis::FilterImplementation::standard, "std", "Standard forward filter (default)"),
+        clEnumValN(typeart::analysis::FilterImplementation::cg, "cg", "Call-graph-based filter")
+            ),
+    cl::Hidden,
+    cl::init(typeart::analysis::FilterImplementation::standard),
+    cl::cat(typeart_meminstfinder_category));
+
+static cl::opt<std::string> cl_typeart_call_filter_plugin_file(
+    "typeart-call-filter-plugin",
+    cl::desc("Location of call-filter plugin to use. (overwrites typeart-call-filter-impl)"),
+    cl::Hidden,
+    cl::init(""),
+    cl::callback([](const std::string &) {
+      cl_typeart_call_filter_implementation = typeart::analysis::FilterImplementation::plugin;
+    }),
+    cl::cat(typeart_meminstfinder_category));
+
+static cl::list<std::string> cl_typeart_call_filter_plugin_opts(
+    "typeart-call-filter-plugin-opts",
+    cl::desc("Extra options that can be passed to filter. <optionA,optionB,...>"),
+    cl::ZeroOrMore,
+    cl::CommaSeparated,
+    cl::ReallyHidden,
+    cl::cat(typeart_meminstfinder_category)
+);
 
 static cl::opt<std::string> cl_typeart_call_filter_glob(
     "typeart-call-filter-str", cl::desc("Filter allocas based on the function name (glob) <string>."), cl::Hidden,
@@ -133,18 +156,24 @@ namespace typeart::pass {
 char TypeArtPass::ID = 0;
 
 TypeArtPass::TypeArtPass() : llvm::ModulePass(ID) {
+  analysis::MemInstFinderConfig::Filter FilterConfig{
+    cl_typeart_filter_stack_non_array,
+    cl_typeart_filter_heap_alloc,
+    cl_typeart_filter_global,
+    cl_typeart_call_filter,
+    cl_typeart_filter_pointer_alloca,
+    cl_typeart_call_filter_implementation,
+    cl_typeart_call_filter_glob,
+    cl_typeart_call_filter_glob_deep,
+    cl_typeart_call_filter_cg_file,
+    cl_typeart_call_filter_plugin_file,
+    {cl_typeart_call_filter_plugin_opts.begin(), cl_typeart_call_filter_plugin_opts.end()}
+  };
+
   analysis::MemInstFinderConfig conf{cl_typeart_instrument_heap,                                                   //
                                      cl_typeart_instrument_stack,                                                  //
                                      cl_typeart_instrument_global,                                                 //
-                                     analysis::MemInstFinderConfig::Filter{cl_typeart_filter_stack_non_array,      //
-                                                                           cl_typeart_filter_heap_alloc,           //
-                                                                           cl_typeart_filter_global,               //
-                                                                           cl_typeart_call_filter,                 //
-                                                                           cl_typeart_filter_pointer_alloca,       //
-                                                                           cl_typeart_call_filter_implementation,  //
-                                                                           cl_typeart_call_filter_glob,            //
-                                                                           cl_typeart_call_filter_glob_deep,       //
-                                                                           cl_typeart_call_filter_cg_file}};
+                                     std::move(FilterConfig)};
   meminst_finder = analysis::create_finder(conf);
 
   EnableStatistics(false);

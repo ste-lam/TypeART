@@ -45,6 +45,12 @@ typeart_target_compile_options(${TYPEART_PREFIX}_MemOpFilter)
 typeart_target_define_file_basename(${TYPEART_PREFIX}_MemOpFilter)
 typeart_target_coverage_options(${TYPEART_PREFIX}_MemOpFilter)
 
+
+install(
+  FILES Filter.h
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME}/filter
+)
+
 # For now, non-consumable filter:
 #install(
 #  FILES Filter.h StandardFilter.h CGFilter.h
