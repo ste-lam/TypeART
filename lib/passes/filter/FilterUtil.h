@@ -70,6 +70,7 @@ enum class ArgCorrelation {
   GlobalMismatch,
 };
 
+template<typename OmpHelper>
 inline std::pair<llvm::Argument*, int> findArg(CallSite c, const Path& p) {
   auto arg = p.getEndPrev();
   if (!arg) {
@@ -85,13 +86,15 @@ inline std::pair<llvm::Argument*, int> findArg(CallSite c, const Path& p) {
 
   auto arg_num = std::distance(c.arg_begin(), arg_pos);
 
-  if (omp::OmpContext::isOmpExecutor(c)) {
-    auto outlined = omp::OmpContext::getMicrotask(c);
-    if (outlined) {
-      // Calc the offset of arg in executor to actual arg of the outline function:
-      auto offset        = omp::OmpContext::getArgOffsetToMicrotask(c, arg_num);
-      Argument* argument = (outlined.getValue()->arg_begin() + offset);
-      return {argument, offset};
+  if constexpr (OmpHelper::WithOmp) {
+    if (OmpHelper::isOmpExecutor(c)) {
+      auto outlined = OmpHelper::getMicrotask(c);
+      if (outlined) {
+        // Calc the offset of arg in executor to actual arg of the outline function:
+        auto offset        = OmpHelper::getArgOffsetToMicrotask(c, arg_num);
+        Argument* argument = (outlined.getValue()->arg_begin() + offset);
+        return {argument, offset};
+      }
     }
   }
 
@@ -99,12 +102,13 @@ inline std::pair<llvm::Argument*, int> findArg(CallSite c, const Path& p) {
   return {argument, arg_num};
 }
 
+template<typename OmpHelper = omp::OmpContext>
 inline std::vector<llvm::Argument*> args(CallSite c, const Path& p) {
   if (c.isIndirectCall()) {
     return {};
   }
 
-  auto [arg, _] = findArg(c, p);
+  auto [arg, _] = findArg<OmpHelper>(c, p);
   if (arg != nullptr) {
     return {arg};
   }
@@ -115,9 +119,9 @@ inline std::vector<llvm::Argument*> args(CallSite c, const Path& p) {
 }
 
 namespace detail {
-template <typename TypeID>
+template <typename OmpHelper, typename TypeID>
 ArgCorrelation correlate(CallSite c, const Path& p, TypeID&& isType) {
-  auto [arg, _] = findArg(c, p);
+  auto [arg, _] = findArg<OmpHelper>(c, p);
 
   if (!arg) {
     const auto count_type_ptr = llvm::count_if(c.args(), [&](const auto& csite_arg) {
@@ -139,14 +143,17 @@ ArgCorrelation correlate(CallSite c, const Path& p, TypeID&& isType) {
 }
 }  // namespace detail
 
+
+template<typename OmpHelper = omp::OmpContext>
 inline ArgCorrelation correlate2void(CallSite c, const Path& p) {
-  return detail::correlate(
+  return detail::correlate<OmpHelper>(
       c, p, [](llvm::Type* type) { return type->isPointerTy() && type->getPointerElementType()->isIntegerTy(8); });
 }
 
+template<typename OmpHelper = omp::OmpContext>
 inline ArgCorrelation correlate2pointer(CallSite c, const Path& p) {
   // weaker predicate than void pointer, but more generally applicable
-  return detail::correlate(c, p, [](llvm::Type* type) { return type->isPointerTy(); });
+  return detail::correlate<OmpHelper>(c, p, [](llvm::Type* type) { return type->isPointerTy(); });
 }
 
 inline bool isTempAlloc(llvm::Value* in) {

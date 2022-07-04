@@ -138,7 +138,7 @@ class BaseFilter : public Filter {
         }
       }
 
-      auto argv = args(c, path2def);
+      auto argv = args<OmpHelper>(c, path2def);
       if (argv.size() > 1) {
         LOG_DEBUG("All args are looked at.")
       } else if (argv.size() == 1) {
