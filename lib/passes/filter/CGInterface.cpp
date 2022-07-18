@@ -121,6 +121,9 @@ JSONCG::JSONCG(const llvm::json::Value& cg) {
   assert(cg.kind() == llvm::json::Value::Kind::Object && "Top level json must be an Object");
   const llvm::json::Object* tlobj = cg.getAsObject();
   if (tlobj != nullptr) {
+    if (const auto &mcg2 = tlobj->getObject("_CG")) {
+      tlobj = mcg2;
+    }
     for (const auto& entry : *tlobj) {
       // std::cout << "Building call site info for " << entry.first.str() << std::endl;
       construct_call_information(entry.first.str(), *tlobj);

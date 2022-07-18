@@ -45,11 +45,13 @@ using namespace llvm;
 #define DEBUG_TYPE "MemInstFinder"
 ALWAYS_ENABLED_STATISTIC(NumDetectedHeap, "Number of detected heap allocs");
 ALWAYS_ENABLED_STATISTIC(NumFilteredDetectedHeap, "Number of filtered heap allocs");
+
 ALWAYS_ENABLED_STATISTIC(NumDetectedAllocs, "Number of detected allocs");
 ALWAYS_ENABLED_STATISTIC(NumFilteredPointerAllocs, "Number of filtered pointer allocs");
 ALWAYS_ENABLED_STATISTIC(NumCallFilteredAllocs, "Number of call filtered allocs");
 ALWAYS_ENABLED_STATISTIC(NumFilteredMallocAllocs, "Number of  filtered  malloc-related allocs");
 ALWAYS_ENABLED_STATISTIC(NumFilteredNonArrayAllocs, "Number of filtered non-array allocs");
+
 ALWAYS_ENABLED_STATISTIC(NumDetectedGlobals, "Number of detected globals");
 ALWAYS_ENABLED_STATISTIC(NumFilteredGlobals, "Number of filtered globals");
 ALWAYS_ENABLED_STATISTIC(NumCallFilteredGlobals, "Number of filtered globals");
@@ -298,11 +300,14 @@ bool MemInstFinderPass::runOnFunction(llvm::Function& function) {
 }  // namespace typeart
 
 void MemInstFinderPass::printStats(llvm::raw_ostream& out) const {
-  auto all_stack            = double(NumDetectedAllocs);
-  auto nonarray_stack       = double(NumFilteredNonArrayAllocs);
-  auto malloc_alloc_stack   = double(NumFilteredMallocAllocs);
-  auto call_filter_stack    = double(NumCallFilteredAllocs);
-  auto filter_pointer_stack = double(NumFilteredPointerAllocs);
+  auto all_stack                       = double(NumDetectedAllocs);
+  auto nonarray_stack                  = double(NumFilteredNonArrayAllocs);
+  auto malloc_alloc_stack              = double(NumFilteredMallocAllocs);
+  auto filter_pointer_stack            = double(NumFilteredPointerAllocs);
+  auto call_filter_stack               = double(NumCallFilteredAllocs);
+  auto call_filter_global              = double(NumCallFilteredGlobals);
+  auto call_filter_global_nocallfilter = double(NumFilteredGlobals);
+  auto call_filter_heap                = double(NumFilteredDetectedHeap);
 
   const auto call_filter_stack_p =
       (call_filter_stack /
@@ -310,13 +315,13 @@ void MemInstFinderPass::printStats(llvm::raw_ostream& out) const {
       100.0;
 
   const auto call_filter_heap_p =
-      (double(NumFilteredDetectedHeap) / std::max<double>(1.0, double(NumDetectedHeap))) * 100.0;
+      (call_filter_heap / std::max<double>(1.0, double(NumDetectedHeap))) * 100.0;
 
   const auto call_filter_global_p =
-      (double(NumCallFilteredGlobals) / std::max(1.0, double(NumDetectedGlobals))) * 100.0;
+      (call_filter_global / std::max(1.0, double(NumDetectedGlobals))) * 100.0;
 
   const auto call_filter_global_nocallfilter_p =
-      (double(NumFilteredGlobals) / std::max(1.0, double(NumDetectedGlobals))) * 100.0;
+      (call_filter_global_nocallfilter / std::max(1.0, double(NumDetectedGlobals))) * 100.0;
 
   Table stats("MemInstFinderPass");
   stats.wrap_header = true;
@@ -324,15 +329,21 @@ void MemInstFinderPass::printStats(llvm::raw_ostream& out) const {
   stats.put(Row::make("Filter string", config.filter.ClCallFilterGlob));
   stats.put(Row::make_row("> Heap Memory"));
   stats.put(Row::make("Heap alloc", NumDetectedHeap.getValue()));
+  stats.put(Row::make("Heap call filtered", NumFilteredDetectedHeap.getValue()));
   stats.put(Row::make("Heap call filtered %", call_filter_heap_p));
   stats.put(Row::make_row("> Stack Memory"));
-  stats.put(Row::make("Alloca", all_stack));
+  stats.put(Row::make("Alloca", NumDetectedAllocs.getValue()));
+  stats.put(Row::make("Alloca of pointer discarded", NumFilteredPointerAllocs.getValue()));
+  stats.put(Row::make("Alloca of malloc-related discarded", NumFilteredMallocAllocs.getValue()));
+  stats.put(Row::make("Alloca of non-array discarded", NumFilteredNonArrayAllocs.getValue()));
+  stats.put(Row::make("Stack call filtered", NumCallFilteredAllocs.getValue()));
   stats.put(Row::make("Stack call filtered %", call_filter_stack_p));
-  stats.put(Row::make("Alloca of pointer discarded", filter_pointer_stack));
   stats.put(Row::make_row("> Global Memory"));
   stats.put(Row::make("Global", NumDetectedGlobals.getValue()));
-  stats.put(Row::make("Global filter total", NumFilteredGlobals.getValue()));
+  stats.put(Row::make("Global discarded", NumFilteredGlobals.getValue() - NumCallFilteredGlobals.getValue()));
+  stats.put(Row::make("Global call filtered", NumCallFilteredGlobals.getValue()));
   stats.put(Row::make("Global call filtered %", call_filter_global_p));
+  stats.put(Row::make("Global filtered", NumFilteredGlobals.getValue()));
   stats.put(Row::make("Global filtered %", call_filter_global_nocallfilter_p));
 
   std::ostringstream stream;

@@ -58,7 +58,7 @@
       "name": "develop",
       "displayName": "Development config (debug)",
       "description": "Default develop build options for Clang",
-      "binaryDir": "${sourceDir}/build",
+      "binaryDir": "${sourceDir}/build/${presetName}",
       "inherits": [
         "clang-toolchain",
         "san"
@@ -73,18 +73,20 @@
       "name": "release",
       "displayName": "Release config",
       "description": "Default release build options for Clang",
-      "binaryDir": "${sourceDir}/build_release",
+      "binaryDir": "${sourceDir}/build/${presetName}",
       "inherits": [
         "clang-toolchain"
       ],
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release"
+        "CMAKE_BUILD_TYPE": "Release",
+        "TYPEART_SOFTCOUNTERS": "OFF"
       }
     },
     {
       "name": "release-counter",
       "displayName": "Release config (w/ runtime counters)",
       "description": "Default release build options with softcounter for Clang",
+      "binaryDir": "${sourceDir}/build/${presetName}",
       "inherits": [
         "release"
       ],
@@ -132,7 +134,7 @@
       "name": "ci-base",
       "hidden": true,
       "description": "Default CI configuration base (debug, softcounter, testing)",
-      "binaryDir": "${sourceDir}/build",
+      "binaryDir": "${sourceDir}/build/${presetName}",
       "inherits": [
         "develop"
       ],

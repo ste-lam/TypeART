@@ -110,9 +110,9 @@ FilterAnalysis CGFilterImpl::decl(const CallBase &current, const Path& p) {
     case CGInterface::ReachabilityResult::reaches:
       return FilterAnalysis::Keep;
     case CGInterface::ReachabilityResult::never_reaches:
-      return FilterAnalysis::Skip;
+//      return FilterAnalysis::Skip;
     case CGInterface::ReachabilityResult::maybe_reaches:
-      return FilterAnalysis::Filter;
+//      return FilterAnalysis::Filter;
     default:
       return FilterAnalysis::Continue;
   }
