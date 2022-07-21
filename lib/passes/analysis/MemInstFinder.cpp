@@ -79,7 +79,7 @@ class MemInstFinderPass : public MemInstFinder {
 };
 
 MemInstFinderPass::MemInstFinderPass(const MemInstFinderConfig& config)
-    : mOpsCollector(config.collect_alloca, config.collect_heap), filter(FilterBuilder(config.filter)()), config(config) {
+    : mOpsCollector(config.collect_alloca, config.collect_heap, config.collect_global), filter(FilterBuilder(config.filter)()), config(config) {
 }
 
 bool MemInstFinderPass::runOnModule(Module& module) {

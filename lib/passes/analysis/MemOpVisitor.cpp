@@ -42,11 +42,11 @@ namespace typeart::analysis {
 
 using namespace llvm;
 
-MemOpVisitor::MemOpVisitor() : MemOpVisitor(true, true) {
+MemOpVisitor::MemOpVisitor() : MemOpVisitor(true, true, true) {
 }
 
-MemOpVisitor::MemOpVisitor(bool collect_allocas, bool collect_heap)
-    : collect_allocas(collect_allocas), collect_heap(collect_heap) {
+MemOpVisitor::MemOpVisitor(bool collect_allocas, bool collect_heap, bool collect_globals)
+    : collect_allocas(collect_allocas), collect_heap(collect_heap), collect_globals(collect_globals) {
 }
 
 void MemOpVisitor::collect(llvm::Function& function) {
@@ -72,6 +72,9 @@ void MemOpVisitor::collect(llvm::Function& function) {
 }
 
 void MemOpVisitor::collectGlobals(Module& module) {
+  if (!collect_globals) {
+    return;
+  }
   for (auto& g : module.globals()) {
     globals.emplace_back(GlobalData{&g});
   }
