@@ -47,8 +47,35 @@ typeart_target_coverage_options(${TYPEART_PREFIX}_MemOpFilter)
 
 
 install(
-  FILES Filter.h
-  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME}/filter
+  FILES
+        Filter.h
+        FilterBase.h
+        FilterUtil.h
+        IRPath.h
+        IRSearch.h
+        OmpUtil.h
+        Matcher.h
+  DESTINATION
+        ${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME}/filter
+)
+
+install(
+        FILES
+        ../analysis/MemOpData.h
+
+        DESTINATION
+            ${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME}/analysis
+)
+
+install(
+    FILES
+        ../support/DefUseChain.h
+        ../support/Util.h
+        ../support/OmpUtil.h
+        ../../support/Logger.h
+
+    DESTINATION
+        ${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME}/support
 )
 
 # For now, non-consumable filter:
