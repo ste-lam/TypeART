@@ -35,13 +35,6 @@ struct DefaultSearch {
       }
     }
 
-    if (auto *GEP = llvm::dyn_cast<llvm::GEPOperator>(val)) {
-      auto *PointerOperand = GEP->getPointerOperand();
-      if (!p.contains(PointerOperand)) {
-        return {};
-      }
-    }
-
     if (auto store = llvm::dyn_cast<llvm::StoreInst>(val)) {
       val = store->getPointerOperand();
       if (llvm::isa<AllocaInst>(val) && !store->getValueOperand()->getType()->isPointerTy()) {
